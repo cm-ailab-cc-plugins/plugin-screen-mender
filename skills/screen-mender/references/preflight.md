@@ -35,7 +35,7 @@
 | 6 | ⚠️/❌ | 磁碟空間 | `df -k` repo toplevel ＋ tmp 可用空間（N lane＝N worktree＋N 台模擬器＋N 份冷編產物，整 run 最吃空間） | `<~5GB`（連一次冷編都不夠）→硬缺「清空間後重試」；`<lanes×~8GB`（概估、因 app 而異）→軟缺：降 lanes 或清空間後以較少 lane 續跑 |
 | 7 | ❌* | git transport（push/fetch，與項 4 的 API 登入不同層） | `git ls-remote --heads origin` exit 0（讀路徑＋credential＋reachability）；`git push --dry-run origin HEAD:refs/heads/__sm-preflight-probe__` exit 0（寫權限；dry-run 不真的建 ref） | ls-remote 失敗→硬缺（SSH key／credential helper／網路不通；提示 `ssh -T <host>`／設 credential helper）；dry-run push 被拒→硬缺（無 push 權限／base 受保護）。*`dry_run=true` 豁免 push 探測，ls-remote 仍查（capture 仍要 fetch base）* |
 | 8 | ❌* | 截圖上傳依賴（§5.3：嵌 MR 走 `curl`＋token，與 API 登入分離） | `command -v curl` 在；`<mr_tool> auth token`（glab／gh 皆支援）回非空 token | curl 缺→硬缺「裝 curl」；token 取不到→硬缺「`glab`／`gh auth login` 重登，或設 `GITLAB_TOKEN`／`GH_TOKEN`」。*`dry_run=true` 豁免（不上傳）* |
-| 9 | ⚠️ | 上一輪殘留本地狀態（無狀態設計的漏點） | `<repo>/.screen-mender/claims`、`/locks` 無殘留；`git worktree list` 無上一輪 `screen-mender-lane*` | 有殘留→軟缺（前一輪 crash 未走 teardown）→自動清掃：`git -C <repo> worktree prune` ＋ `git worktree remove --force` 殘留 lane worktree ＋ `rm -rf <repo>/.screen-mender/claims <repo>/.screen-mender/locks`，清完續跑。只動 screen-mender 自管路徑（單一互動 run，殘骸＝前輪 crash，清掃安全） |
+| 9 | ⚠️ | 上一輪殘留本地狀態（無狀態設計的漏點） | `<repo>/.screen-mender/claims`、`/locks`、`/runs` 無殘留；`git worktree list` 無上一輪 `screen-mender-lane*` | 有殘留→軟缺（前一輪 crash 未走 teardown）→自動清掃：`git -C <repo> worktree prune` ＋ `git worktree remove --force` 殘留 lane worktree ＋ `rm -rf <repo>/.screen-mender/claims <repo>/.screen-mender/locks <repo>/.screen-mender/runs`，清完續跑。只動 screen-mender 自管路徑（單一互動 run，殘骸＝前輪 crash，清掃安全）。固定落點 `.screen-mender/runs/` 讓 crash 後的孤兒暫存目錄也能被這步可靠回收（temp 落點做不到） |
 | 10 | ❓/⚠️ | snapshot 基準裝置對齊（step 4 ensure-devices 回報後對賬，非純靜態） | ensure-devices 解析出的裝置型號＋runtime（由 serial/udid 反查：iOS `xcrun simctl list devices`／Android `adb -s <serial> shell getprop ro.product.model`＋`ro.build.version.sdk`）對得上 snapshot suite 期望基準（grep test／snapshot 設定的 device/OS pin） | 發生機型/runtime fallback（指定機型不可用退「本機最新」），或偵測到 suite pin 與解析裝置不符→軟缺「snapshot 基準恐失真：reference image 綁裝置型號＋OS 版本，capture 偵測與 verify 比對結果存疑；建議 `--device-android`／`--device-ios` 釘住 suite 基準機型」。suite 期望靜態測不準時降 ❓「需人工確認」、不擋 |
 
 > **git host 偵測（self-hosted 也要對，勿只比 URL 字樣）**：
@@ -95,4 +95,4 @@ screen-mender 環境快檢 · 平台 iOS · 目標裝置 4 台
 - 任一 ❌ 硬缺 → 印 checklist（每條附一句「怎麼補」或 add-snapshot SKILL §10 接入指引）+ **終止**，不進 Phase 1。
 - 無硬缺 → 印 checklist（含 ⚠️ 已降級與 ❓ 待確認）後**續跑**。
 - ❓ 可能缺一律不擋（理由見〈判級〉）。
-- 探測本身只 live 查、不新寫任何狀態檔（不落 `.audit`、不寫 profile），維持無狀態。唯一的「動檔」是項 9 清掉**上一輪 crash 殘留**的 `screen-mender-lane*` worktree 與 `.screen-mender/claims|locks`——這是回收前輪殘骸、非建立本輪狀態，不違反無狀態。
+- 探測本身只 live 查、不新寫任何狀態檔（不落 `.audit`、不寫 profile），維持無狀態。唯一的「動檔」是項 9 清掉**上一輪 crash 殘留**的 `screen-mender-lane*` worktree 與 `.screen-mender/claims|locks|runs`——這是回收前輪殘骸、非建立本輪狀態，不違反無狀態。本輪暫存（截圖／log／issues.md）一律落 gitignored 的 `.screen-mender/runs/`，不進版控、不被下一輪讀回。

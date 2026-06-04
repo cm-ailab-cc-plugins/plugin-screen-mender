@@ -202,7 +202,7 @@ fix 階段 push 後，mr 階段 rebase 到 `base_branch`（已 push 用 `--force
 
 ### §5.6 run 期間暫存
 
-= ephemeral run 目錄（temp / gitignored）。以下皆放此，run 結束即刪，repo / `.audit` 不留檔：
+= ephemeral run 目錄 `<repo>/.screen-mender/runs/<run_id>/`（gitignored、不進版控，`.audit` 一律不寫）。以下皆放此，run 結束即刪：
 
 - issues.md
 - 截圖

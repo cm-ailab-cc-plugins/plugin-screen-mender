@@ -173,7 +173,7 @@ skill 跑完後輸出三件事：
 - **唯一固定契約 = on-device 來源檔名 `<SnakeName>__<LocaleTag>.png`**（test code 寫死）。
 - host 落點（dest 目錄）一律由呼叫者以絕對路徑指定；skill 不預設任何持久落點。
   - 本 skill 為內部 capture 工具（`user-invocable: false`），唯一呼叫者是 screen-mender runner。
-  - runner 會把 PNG 取到本 run 的 ephemeral `run_dir` 並改名 `before__<state>__<locale>.png`（run 結束即刪，repo / `.audit` 不留檔）。
+  - runner 會把 PNG 取到本 run 的 ephemeral `run_dir`（gitignored，不進版控）並改名 `before__<state>__<locale>.png`（run 結束即刪，不留任何被追蹤的檔、不寫 `.audit`）。
 
 取圖方式：
 

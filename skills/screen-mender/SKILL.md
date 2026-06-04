@@ -37,12 +37,12 @@ description: >-
 - 下文 "emulator" 在 iOS repo 即 "simulator"
 
 ### 無狀態
-- 不留任何本地紀錄檔
+- 不留任何**被 git 追蹤的**狀態檔；暫存走 gitignored 的 `.screen-mender/`（不進版控、run 結束即刪），idempotency 不靠讀回本地檔。
 - 「這畫面修過沒」每次 live 查 git host（merged／open MR）
 
 ### MR 是唯一 SSOT
 - 修了什麼、before/after 截圖、考慮過但不修的理由，全寫在 MR。
-- run 期間暫存放 ephemeral run 目錄（temp／gitignored），run 結束即刪。
+- run 期間暫存放 ephemeral run 目錄 `<repo>/.screen-mender/runs/<run_id>/`（gitignored、不進版控），run 結束即刪。
 
 ### 不重造輪子
 - orchestrator 自己用：screen-list（畫面列舉）。
@@ -141,7 +141,7 @@ screen-mender（orchestrator）自己負責：
 
 #### 3. 建 ephemeral run 目錄放暫存
 
-temp／gitignored，run 結束即刪。
+預設 `<repo>/.screen-mender/runs/<run_id>/`（per-screen 子目錄 `<unified_id>/`），run 結束即刪。建立前先確保目標 repo 的 `.gitignore` 含一行 `.screen-mender/`（`git -C <repo> check-ignore -q .screen-mender || ` 補寫），避免截圖／log／issues.md 被當 untracked 檔污染 `git status` 或誤 commit 進修復分支。
 
 #### 4. 配 lane
 
@@ -278,7 +278,7 @@ orchestrator 已知值轉傳，runner 不讀設定檔
 - 觀測（每畫面）：附一行 compact 耗時 `capture <a>s · audit <b>s · fix <c>s/<k> builds (<r> rounds) · verify <d>s`（資料來自各 runner summary 的 `timing`），並點出本 run 最慢階段與 build 次數最高的畫面（=最該優化處）；`trace=true` → 改出完整逐階段 breakdown（見 [`orchestration`](references/orchestration.md) §7）。
 - capture 保真度旗標：列出本 run 有 `font-fidelity-degraded`／`representative-render`／`capture-nondeterministic`／`locale-unverifiable` 的畫面（這類「乾淨」或「已修」可能是 capture 不忠於真機造成的假象；`locale-unverifiable` 另列「需真機抽驗」清單）。
 - run-config 揭露：明示本 run 的 `string_fix_policy` 與 `dry_run`；若 `string_fix_policy` 關閉了「縮文案」這條修法，列出因此 `deferred-by-run-config` 的缺陷。`dry_run` 時明示「本 run 未開任何 MR，產物在 `<run_dir>`」。
-- 收尾：清掉所有 lane worktree + `claim_dir`；跑 [`scripts/ensure-devices.sh`](scripts/ensure-devices.sh) `--teardown --platform <P>` 關機所有自管 `test_phone_NN`（保留 profile 供下次重用、只動 pool 不碰其他裝置）；已 merge 的 branch 清除；ephemeral run 目錄刪除（`dry_run` 例外：run 目錄保留並回報路徑，見 orchestration §5.6）。
+- 收尾：清掉所有 lane worktree + `claim_dir`；跑 [`scripts/ensure-devices.sh`](scripts/ensure-devices.sh) `--teardown --platform <P>` 關機所有自管 `test_phone_NN`（保留 profile 供下次重用、只動 pool 不碰其他裝置）；已 merge 的 branch 清除；ephemeral run 目錄（`.screen-mender/runs/<run_id>/`）刪除（`dry_run` 例外：run 目錄保留並回報路徑，見 orchestration §5.6）。
 
 ## 參考
 

@@ -50,6 +50,7 @@
 
 ## Step 2 — 逐條 AC 比對
 讀每條 kept AC，Read after（對 before 對看），親眼判：
+- **無可見 delta = fail（不是 pass）**：目標區 after 與 before 視覺相同（改錯節點／no-op／harness 遮蔽）→ 修法未生效，判 `NEEDS_CHANGES` 並要求 stage 3 **還原該無效變更**（不得保留「收緊 UI 卻零可見效益」的改動）；若屬 harness 渲染不出 → 要求標 `snapshot-unverifiable`、仍還原變更（[`issue-schemas`](issue-schemas.md) §3〈可見 delta 鐵則〉）。
 - truncation/overlap/wrap → 該處現在完整、不截斷、不重疊？（after 仍有 `…`／裁切於需讀內容 = **fail**）
 - hardcoded-string/translation → 現在是目標 locale 正確譯文（非中文／raw key）？
 - contrast → 現在可讀？
@@ -65,6 +66,7 @@
 ## Step 3 — 同畫面視覺等價掃描
 把 after 對 before 逐區掃，每塊歸一類：
 - `target-fix`：spec 列的缺陷處，預期會變。**只豁免位移／reflow，不豁免改完後的正確性**（套 Step 2 AC + Step 3.5）。target 區出現的新缺陷（對齊跑掉／置中遺失／換行不平衡）= `fail`。
+  - **搬移截斷必抓**：target 區內若有元素從 before 完整變成 after 截斷／省略（典型：為塞下目標而把同列鄰居壓成「Resu…」）= `fail`，**即使該元素在 target 區、即使 kept AC 寫了「可接受壓縮」**——那種 AC 本身把搬移截斷當解，判 `AUDIT_PROBLEM`（[`issue-schemas`](issue-schemas.md) §3〈修一個元素不得截斷另一個〉）。before 完整可讀者，after 必須仍完整可讀。
 - `unchanged`：非目標處與 before 一致 → OK。
 - `unintended-delta`：非目標處卻變了 → `visual_equivalence` fail，寫哪塊怎麼變（位移／換行數變／對齊跑掉／顏色或大小變／元素增刪）。
 

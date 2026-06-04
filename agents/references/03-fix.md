@@ -52,6 +52,8 @@
 
 ### loop 自檢規則
 - render 自檢底線 = **過 C1–C5** 才算有效 render。
+- **無可見 delta = 還原**：Read after 後若目標區與 before **視覺相同**（改錯節點／no-op／harness 遮蔽）→ 此修法無效，**還原該變更**（不得把「收緊 UI 卻零可見效益」的改動如 `maxLines=1`／改 `padding` 語義留在 diff），升級修法重試；若確認是 harness 渲染不出（如 `navigationBarsPadding` 在非 edge-to-edge host no-op／`Locale.current` 未套）→ 標 `snapshot-unverifiable` 交 stage 4／escalate，**仍還原無效變更**（[`issue-schemas`](issue-schemas.md) §3〈可見 delta 鐵則〉）。修法依據是可見差異、非 code 推敲。
+- **借鄰居空間不得截斷鄰居**：用 weight／maxLines／ellipsis 壓縮同列鄰居來騰位給目標時，Read after 必確認該鄰居沒從 before 完整變成 after 新截斷（`…`／裁切）；有 → 搬移截斷、不算修好，改走整列換行／縮字串或 `deferred:needs-design`（[`issue-schemas`](issue-schemas.md) §3）。
 - **不要交「換位置」假修復**：modifier 只把 overflow／折行搬到別處 = 沒修好，必須升級。
 - **省略號／tail-truncate 不是修好**：
   - 需讀內容（名稱／標題／訊息）要完整可見（縮字串或換行）。

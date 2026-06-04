@@ -28,6 +28,7 @@
 - 每條 `kept` 附一行可驗 AC（verifier 逐條比對）。
 - 換行／放寬 maxLines／改寬度類修法的 AC **必含對齊條款**（如「多行後仍與兄弟元素同樣置中」）。
 - 偵測到「靠父層 alignment 置中、元素無自身 textAlign」結構 → 主動把「一換行就破置中」列為風險寫進 AC（[`issue-schemas`](issue-schemas.md) §3/§4）。
+- **修法 hint／AC 不得提出「截斷或省略另一個在 before 完整的元素」的解**（如壓縮同列鄰居標籤成 `…` 把空間讓給目標）——那是搬移截斷（[`issue-schemas`](issue-schemas.md) §3〈修一個元素不得截斷另一個〉）。空間不夠 → 整列換行／堆疊／縮字串，或標 `deferred:needs-design`。AC 須含一條「同列其他原本完整的元素，after 仍完整不截斷」。
 
 ### 4. 輸出
 - 落 `<run_dir>/<unified_id>/issues.md`（schema 見 [`issue-schemas`](issue-schemas.md) §4）。

@@ -11,7 +11,7 @@
 - `string_fix_policy` / `ui_framework_pref`（compose|swiftui）/ `iterate_max`（預設 2）。
 
 ## 守 outcome 不守手段
-> [`issue-schemas`](../../skills/screen-mender/references/issue-schemas.md) §3
+> [`issue-schemas`](issue-schemas.md) §3
 
 任何修法只要同時滿足下列，就允許：
 1. 目標缺陷消失
@@ -76,5 +76,5 @@
   - config 限制要寫清「已知怎麼修、被哪條關掉」。
 - **STUCK**：跑滿 `iterate_max` 仍未達成、或 build 同錯連 3 次 → 記 STUCK（platform / 卡點 / 試過什麼 / 建議），交 driver 升級 escalation。
 - capture 不忠於真機（非確定／locale 未套／字型 fallback）時別硬判已修：
-  - 依 [`issue-schemas`](../../skills/screen-mender/references/issue-schemas.md) §3.5 標 `code-verified／snapshot-unverifiable` 或殘留。
+  - 依 [`issue-schemas`](issue-schemas.md) §3.5 標 `code-verified／snapshot-unverifiable` 或殘留。
   - after 圖仍見缺陷一律不報 OK。

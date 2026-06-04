@@ -37,7 +37,7 @@
 - C5 無 crash·空白
 
 ### 6. capture 保真度旗標
-> **須回報、不可靜默**，見 [`issue-schemas`](../../skills/screen-mender/references/issue-schemas.md) §3.5
+> **須回報、不可靜默**，見 [`issue-schemas`](issue-schemas.md) §3.5
 - `font-fidelity-degraded`：自訂字型未註冊、fallback 到系統字型。
   - 註：系統字型通常較寬、會遮蔽字型專屬爆框。
 - `representative-render`：以重建 chrome（非 live 控制器）出圖。

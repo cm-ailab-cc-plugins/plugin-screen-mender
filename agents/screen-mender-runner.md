@@ -136,7 +136,7 @@ model: opus
 - 無狀態：
   - 不寫任何 `.audit` / heartbeat / 紀錄檔；暫存只落 `run_dir`（run 結束 orchestrator 清）。
   - 完成由 harness 通知 orchestrator，不寫 heartbeat。
-- 共享規則書：需要 triage / 修復安全約束（T1/T2/R、§3 優先序）/ MR schema 全細節 → Read `${CLAUDE_PLUGIN_ROOT}/skills/screen-mender/references/issue-schemas.md`（階段檔已內嵌常用規則，通常不必開）。
+- 共享規則書：需要 triage / 修復安全約束（T1/T2/R、§3 優先序）/ MR schema 全細節 → Read `${CLAUDE_PLUGIN_ROOT}/agents/references/issue-schemas.md`（階段檔已內嵌常用規則，通常不必開）。
 
 ## 階段間交接（run_dir 暫存）
 

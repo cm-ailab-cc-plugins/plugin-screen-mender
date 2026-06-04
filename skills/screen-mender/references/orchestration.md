@@ -151,7 +151,7 @@ git -C <lane_worktree> checkout <base_branch> && git -C <lane_worktree> pull --f
 - mr 階段 **不 rebase、不 push、不開 MR**；改從 lane worktree 取產物落 `<run_dir>/<unified_id>/`：
   - `change.patch` = `git -C <worktree> format-patch <base_branch>..HEAD --stdout`。
   - `before.png` / `after.png`（複製 fix 階段的 before/after 截圖）。
-  - `proposed-mr.md` = §5.3／[`issue-schemas`](issue-schemas.md) §4 的 MR description，但截圖引本地相對路徑（不 `POST /uploads`），轉 ready 與否改標 `would-be-ready`。
+  - `proposed-mr.md` = §5.3／[`issue-schemas`](../../../agents/references/issue-schemas.md) §4 的 MR description，但截圖引本地相對路徑（不 `POST /uploads`），轉 ready 與否改標 `would-be-ready`。
 - review 階段照跑，`diff_cmd` = `git -C <worktree> diff <base_branch>`；verify 階段照判 after-shot；內部 loop 照常。
 - 冪等（§5.1）略過（無 MR 可查）；轉 ready（§5.4）略過。
 
@@ -170,13 +170,13 @@ fix 階段 push 後，mr 階段 rebase 到 `base_branch`（已 push 用 `--force
 
 ### §5.3 MR description = 唯一紀錄
 
-列 + 內嵌截圖（schema 見 [`issue-schemas`](issue-schemas.md) §4）：
+列 + 內嵌截圖（schema 見 [`issue-schemas`](../../../agents/references/issue-schemas.md) §4）：
 
-- 標題：固定模板 `自動跑版修復[（部分）]：<unified_id> - <原因摘要>`（見 [`issue-schemas`](issue-schemas.md) §4〈MR 標題固定模板〉；有任一殘留可見 → 必用「（部分）」variant）。
+- 標題：固定模板 `自動跑版修復[（部分）]：<unified_id> - <原因摘要>`（見 [`issue-schemas`](../../../agents/references/issue-schemas.md) §4〈MR 標題固定模板〉；有任一殘留可見 → 必用「（部分）」variant）。
 - 畫面狀態：`fully-fixed` / `partially-fixed (n fixed, m deferred-visible)` / `clean`——由「所有 kept+deferred 缺陷是否都解決」計，非「我選修的那幾條過 verify 沒」。
 - 修了哪些視覺缺陷（file:line + 修法；退讓解註記 `legibility-degraded`）。
 - ⚠️ 殘留可見缺陷（`deferred:needs-design` / `deferred:deferred-by-run-config`，after 圖仍可見）列最顯眼處。
-  - 標題鐵則：有任一殘留可見 → MR 標題必用「（部分）」variant（`自動跑版修復（部分）：…`，見 [`issue-schemas`](issue-schemas.md) §4），不得用全修復 variant。
+  - 標題鐵則：有任一殘留可見 → MR 標題必用「（部分）」variant（`自動跑版修復（部分）：…`，見 [`issue-schemas`](../../../agents/references/issue-schemas.md) §4），不得用全修復 variant。
 - 考慮過但不修（wont-fix reason）。
 - 內嵌 before/after 截圖。
   - 上傳：`POST /projects/:id/uploads` 取得 `/uploads/...` markdown 嵌進 description。

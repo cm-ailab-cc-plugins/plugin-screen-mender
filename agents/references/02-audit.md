@@ -18,7 +18,7 @@
 
 ### 2. triage
 > shot-audit 不做、你補
-- 依 [`issue-schemas`](../../skills/screen-mender/references/issue-schemas.md) §2 對每條標 `kept` / `deferred:<reason>` / `wont-fix:<reason>`。
+- 依 [`issue-schemas`](issue-schemas.md) §2 對每條標 `kept` / `deferred:<reason>` / `wont-fix:<reason>`。
 - `wont-fix`：known-intended／無設計證據的 redesign／false-positive／non-visual a11y… → 列 MR「考慮過但不修」段。
 - `deferred`：真缺陷、本 run 不修。
   - `needs-design` 須設計拍板／`deferred-by-run-config` 被 run-config 關閉。
@@ -27,10 +27,10 @@
 ### 3. 附 AC
 - 每條 `kept` 附一行可驗 AC（verifier 逐條比對）。
 - 換行／放寬 maxLines／改寬度類修法的 AC **必含對齊條款**（如「多行後仍與兄弟元素同樣置中」）。
-- 偵測到「靠父層 alignment 置中、元素無自身 textAlign」結構 → 主動把「一換行就破置中」列為風險寫進 AC（[`issue-schemas`](../../skills/screen-mender/references/issue-schemas.md) §3/§4）。
+- 偵測到「靠父層 alignment 置中、元素無自身 textAlign」結構 → 主動把「一換行就破置中」列為風險寫進 AC（[`issue-schemas`](issue-schemas.md) §3/§4）。
 
 ### 4. 輸出
-- 落 `<run_dir>/<unified_id>/issues.md`（schema 見 [`issue-schemas`](../../skills/screen-mender/references/issue-schemas.md) §4）。
+- 落 `<run_dir>/<unified_id>/issues.md`（schema 見 [`issue-schemas`](issue-schemas.md) §4）。
 - 不寫 `.audit/` 持久檔。
 
 ## Output

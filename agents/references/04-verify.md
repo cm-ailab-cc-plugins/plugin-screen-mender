@@ -11,7 +11,7 @@
 
 > 順序：先做 Step 0（審 diff）。scope 已越界／redesign 就 `NEEDS_CHANGES` 回 fix，不必再燒視覺驗證；Step 0 過了才往下做截圖驗證。
 
-> 此前提僅在 capture 確定性成立時有效：若該畫面標 `capture-nondeterministic`／內容隨機／字型間歇 fallback，before/after 不可比，不得在其上判視覺等價 PASS（[`issue-schemas`](../../skills/screen-mender/references/issue-schemas.md) §3.5）。
+> 此前提僅在 capture 確定性成立時有效：若該畫面標 `capture-nondeterministic`／內容隨機／字型間歇 fallback，before/after 不可比，不得在其上判視覺等價 PASS（[`issue-schemas`](issue-schemas.md) §3.5）。
 
 ## Inputs
 - diff：`git -C <worktree> diff <base_branch>`（`dry_run` 也用這個；非 dry-run 已開 MR 後可改 `<mr_tool> mr diff <id>`）——Step 0 用。
@@ -31,7 +31,7 @@
 - 新增的 snapshot test / host 檔屬預期 scaffolding，不算越界。
 
 ### 判二：redesign
-> 守 outcome，見 [`issue-schemas`](../../skills/screen-mender/references/issue-schemas.md) §3
+> 守 outcome，見 [`issue-schemas`](issue-schemas.md) §3
 
 - 核心問句：diff 是讓畫面長一樣、只是結構更穩（T1/T2 修復，OK），還是讓畫面長得不一樣（R 重設計，擋）？
 - R 重設計 = 增刪使用者看得到的內容元素／改資訊架構／換配色／換視覺語言。

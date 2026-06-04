@@ -27,7 +27,7 @@ description: >-
 - 偵測與驗收都靠截圖
 - 範圍: 截斷／爆框／重疊／錯位／譯文壞／locale 格式錯／對比不可讀
 - 截圖看不見的不在範圍，route 去專屬 a11y pass
-- 完整類別: [`issue-schemas`](references/issue-schemas.md)
+- 完整類別: [`issue-schemas`](../../agents/references/issue-schemas.md)（runner 規則書）
 
 ### 雙平台、零設定
 - 單次 run 鎖定一個平台，由 git repo 檔案特徵自動偵測（Phase 0），無 profile 設定檔
@@ -45,10 +45,9 @@ description: >-
 - run 期間暫存放 ephemeral run 目錄（temp／gitignored），run 結束即刪。
 
 ### 不重造輪子
-- capture 用 add-snapshot
-- 列舉借 screen-list
-- 單圖偵測借 shot-audit
-- 本 skill 只加 per-screen 認領迴圈、work-stealing、per-lane worktree 重用，和**一個專屬 runner agent**（capture / audit / fix / 審查驗證 / MR 串成它的 5 個內部階段）
+- orchestrator 自己用：screen-list（畫面列舉）。
+- runner 內部用：add-snapshot（capture）、shot-audit（單圖偵測）。
+- 本 skill（orchestrator）只加 per-screen 認領迴圈、work-stealing、per-lane worktree 重用，和**派一個專屬 runner agent** 跑完整修復閉環。
 
 ### 全部委派、不輪詢
 
@@ -77,31 +76,24 @@ description: >-
 
 ## 使用與自建
 
-使用既有 sibling skill ：
+sibling skill 歸屬：
 
-- capture: [`../add-snapshot`](../add-snapshot/SKILL.md)
-- 畫面列舉: [`../screen-list`](../screen-list/SKILL.md)
-- 單圖偵測: [`../shot-audit`](../shot-audit/SKILL.md)
-- triage / schema / 安全約束走自帶 [`references/issue-schemas.md`](references/issue-schemas.md)
+- orchestrator 自己用：[`../screen-list`](../screen-list/SKILL.md)（Phase 0 畫面列舉）。
+- runner 內部用（orchestrator 不直接呼叫）：[`../add-snapshot`](../add-snapshot/SKILL.md)（capture）、[`../shot-audit`](../shot-audit/SKILL.md)（單圖偵測）。
+- triage / 修復安全約束 / MR schema 走 runner 規則書 [`../../agents/references/issue-schemas.md`](../../agents/references/issue-schemas.md)。
 
-screen-mender 自己負責：
+screen-mender（orchestrator）自己負責：
 - 畫面認領迴圈 + work-stealing
 - 每個 lane worktree 重用
-- 每個畫面驅動一個 runner agent 進行修復
+- 每個畫面派一個 runner agent 跑完整修復閉環
 
 ### 專屬 agent
 
 **[`screen-mender-runner`](../../agents/screen-mender-runner.md)**
 
-- 職責：**每畫面一個**，獨力跑 capture→audit→fix→審查驗證→MR 共 5 階段，回一段精簡 summary。手持 5 格 TODO，逐格 Read `agents/references/0X-*.md` 階段 prompt 當該階段指令（早退畫面不讀後面幾格、省 context）。
-- 5 個內部階段（詳細規則在各階段檔；orchestrator 不需懂細節）：
-  - **capture**：確保 snapshot test（缺就用 add-snapshot 建）、出截圖、C1–C5 渲染閘、capture 保真旗標。
-  - **audit**：shot-audit 偵測 + triage（`kept`/`deferred`/`wont-fix`）+ 每條附 AC → `issues.md`。
-  - **fix**：讀 kept、依 §3 優先序在真 render 上有界迭代（≤`iterate_max`）、守 outcome（T1/T2/R）、字串依 `string_fix_policy`、commit + push。
-  - **審查與驗證（self-review + self-verify）**：先審 diff（scope：只改 kept、無越界；redesign：修復 vs 重設計），再驗 after 截圖（逐條比 AC、證據紀律量水平軸 + 同畫面視覺等價掃描 + 殘留盤點 + 鄰域 regression）；產合併 `verify_verdict`，NEEDS_CHANGES 回 fix、AUDIT_PROBLEM 升級。
-  - **mr**：冪等 live 查 + rebase + 開一個 MR（before/after 內嵌）+ 轉 ready。
-- 內部迴圈：`fix↔審查驗證` ≤ `internal_loop_max_rounds`；超界 / STUCK / AUDIT_PROBLEM → return `escalation`，由 orchestrator 上報使用者。
-- context 紀律：build log 導檔只 grep 錯誤行、截圖讀一次、逐畫面歸零——這是它即使難畫面也不爆 context 的關鍵。
+- **每畫面派一個**，獨力跑完整修復閉環（capture→audit→fix→審查驗證→MR），回一段精簡 summary。
+- 它的內部階段拆解與規則書（triage / 修復安全約束 / MR schema）都在 [`../../agents/references/`](../../agents/references/)（5 個階段 prompt + `issue-schemas.md`）——**orchestrator 不需懂這些細節**。
+- orchestrator 只掌握它的「回傳契約」：status（`fully-fixed`/`partially-fixed`/`clean`/`locked`/`defect`/`stuck`）＋ `escalation`（何時該打斷使用者）；schema 見 [`runner agent`](../../agents/screen-mender-runner.md)。
 
 ## 流程
 
@@ -182,7 +174,7 @@ Reference: orchestration.md §3–4
   - 鐵則：採 `disabled` 等於關閉 §3 優先序第 1 順位（縮短文案）
     - 起手必須問使用者、或明確預設並告知
     - 因此無法乾淨修的 in-scope 缺陷一律標 `deferred:deferred-by-run-config`
-    - 詳情見 [`issue-schemas`](references/issue-schemas.md) §2/§3。
+    - 詳情見 runner 規則書 [`issue-schemas`](../../agents/references/issue-schemas.md) §2/§3。
 - `extra_audit_locales`：`[]` — opt-in 多語系翻譯正確性檢查。
 - `neighborhood_regression`：`true`。
 - `dry_run`：`false`
@@ -192,7 +184,7 @@ Reference: orchestration.md §3–4
   - 每畫面把 patch落本 run 目錄，包含以下內容
     - `git format-patch <base>..HEAD`
     - before/after 截圖
-    - `proposed-mr.md`，schema 同 [`issue-schemas`](references/issue-schemas.md) §4
+    - `proposed-mr.md`，schema 同 runner mr 階段（[`issue-schemas`](../../agents/references/issue-schemas.md) §4）
   - run 結束**不刪** run 目錄、回報其路徑（lane worktree 照清）。觸發：`/screen-mender --dry-run [畫面...]`、「試跑 screen-mender」「先別開 MR、給我看會怎麼改」。
 - `trace`：`false`
   - 是否要記錄 skill 分析數據
@@ -246,7 +238,7 @@ orchestrator 已知值轉傳，runner 不讀設定檔
 - `neighborhood_test_cmds`（`neighborhood_regression=true` 時帶：與本 `unified_id` 同 module／feature、且 base 已有 snapshot test 的鄰域畫面測試指令；無鄰域 → 不帶）
 - `fidelity_reference`（選用：同元件乾淨語系 render／既有乾淨截圖，供 verify 字形保真比對）
 
-**收到 runner summary 後**（依 `status`，遵 [`issue-schemas`](references/issue-schemas.md) §4 狀態鐵則）：
+**收到 runner summary 後**（依 `status`，狀態鐵則見 [`runner 回傳契約`](../../agents/screen-mender-runner.md)）：
 
 - 發 milestone 通知一句（見〈對話節奏〉）：
   - `fully-fixed`：「畫面 `<unified_id>` 小 MR 已發（!x），修了 N 條視覺缺陷。」
@@ -273,9 +265,8 @@ orchestrator 已知值轉傳，runner 不讀設定檔
 
 ## 參考
 
-- **問題 schema／triage／安全約束** → [`references/issue-schemas.md`](references/issue-schemas.md)：§4 issues.md／MR schema、§2 triage（kept／deferred／wont-fix）、§3 修復安全約束（T1 自由／T2 結構改動須證視覺等價／R 重設計禁／overflow 修法優先序／字串值依 `string_fix_policy` 且永不 hardcode）。runner 的 audit／fix／review／verify 階段皆依此。
-- **編排紀律** → [`references/orchestration.md`](references/orchestration.md)：§1 delegate、§2 無 watchdog、§3–4 lane／認領／worktree、§5 MR／截圖上傳、§6 內部 loop 上限、§7 觀測。
-- **runner agent** → [`../../agents/screen-mender-runner.md`](../../agents/screen-mender-runner.md) 與 [`../../agents/references/`](../../agents/references/) 的 6 個階段 prompt。
+- **編排紀律（orchestrator 自己的規則）** → [`references/orchestration.md`](references/orchestration.md)：§1 delegate、§2 無 watchdog、§3–4 lane／認領／worktree、§5 MR／截圖上傳、§6 內部 loop 上限、§7 觀測。
+- **runner agent + 其規則書（runner 領域，orchestrator 通常不需開）** → [`../../agents/screen-mender-runner.md`](../../agents/screen-mender-runner.md) 與 [`../../agents/references/`](../../agents/references/)：5 個階段 prompt（01–05）＋ `issue-schemas.md`（§2 triage／§3 修復安全約束／§4 issues.md・MR schema）。
 
 ## 操作須知
 

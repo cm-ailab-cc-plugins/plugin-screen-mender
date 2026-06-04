@@ -116,16 +116,16 @@ class <SnapshotTestName> {
 }
 ```
 
-跑完後 pull PNG：
+跑完後 pull PNG（dest 用呼叫者給的絕對路徑，直接指到 `run_dir`）：
 
 ```shell
 adb pull /sdcard/Android/data/<PackageName>/files/snapshots/<SnakeName>__<LocaleTag>.png \
-  .audit/inbox/android/previews/<SnakeName>__<LocaleTag>.png
+  <呼叫者給的絕對 dest 目錄>/<SnakeName>__<LocaleTag>.png
 ```
 
 > 註：
-> - on-device 來源檔名固定 `<SnakeName>__<LocaleTag>.png`。
-> - 上面第二個路徑（host 落點）是 standalone 預設，呼叫者（如 screen-mender）可改 pull 到自己的目錄並改名。
+> - on-device 來源檔名固定 `<SnakeName>__<LocaleTag>.png`，是唯一固定契約。
+> - host 落點由呼叫者（screen-mender runner）以絕對路徑指定；本 skill 不預設任何持久落點。
 > - 詳見 SKILL.md §9.1。
 
 ### 範本 B：Android XML DialogFragment / View（無 Compose）
@@ -211,5 +211,5 @@ ANDROID_SERIAL=<emulator-serial> ./gradlew :app:connectedDebugAndroidTest \
 | mockk-android jvmti 16K page-size 失敗 | 預設不用 mockk-android；走 seed real data source / DI override 路徑 |
 | `Theme.AppCompat` 不夠用 Material theme | 範本 B host activity 預設 `Theme.Material.Light.NoActionBar`；不夠時切 `Theme.MaterialComponents.Light.NoActionBar` |
 | LaunchedEffect 內 analytics call 撞 network | host 改傳 noop logger 物件（不靠 DI），避免阻塞渲染或當 |
-| PNG 落 worktree 相對 `.audit/`（`adb pull` 用 cwd 相對路徑；從 worktree 跑 = 落 worktree 的 `.audit/`，不在 canonical root）→ 下游 shot-audit 撈不到 | pull destination 在 host 端從 cwd walk up 找含 `.audit/inbox/` 的祖先目錄再 pull，不要用 cwd 相對路徑 |
+| `adb pull` 用 cwd 相對路徑 → 從 worktree 跑時落點會跟著 cwd 跑、呼叫者撈不到 | pull destination 一律用呼叫者給的**絕對路徑**（指到 `run_dir`），不要用 cwd 相對路徑 |
 | feature module 內的 Composable 畫面：instrumented test 跑時 `TETheme` → `TECompositionLocal` → `getKoin()` 撞 `IllegalStateException("KoinApplication has not been started")`（feature module 的 androidTest 跑在自己的 test package，沒 `MyApplication` bootstrap Koin） | 該 module `src/androidTest` 加一個 module-local `SnapshotTestRunner`（custom `AndroidJUnitRunner`，`newApplication()` 內 `if (GlobalContext.getOrNull()==null) startKoin { androidContext(app); modules(emptyList()) }`）+ module `build.gradle.kts` 設 `testInstrumentationRunner`；直接沿用既有 `SnapshotTestRunner.kt` 範本 |

@@ -170,27 +170,22 @@ skill 跑完後輸出三件事：
 
 ### 9.1 PNG 落地路徑
 
-- on-device 截圖檔名固定 `<SnakeName>__<LocaleTag>.png`（test code 寫死）。
-- pull 到 host 的落點 / 改名可由呼叫者覆寫。
+- **唯一固定契約 = on-device 來源檔名 `<SnakeName>__<LocaleTag>.png`**（test code 寫死）。
+- host 落點（dest 目錄）一律由呼叫者以絕對路徑指定；skill 不預設任何持久落點。
+  - 本 skill 為內部 capture 工具（`user-invocable: false`），唯一呼叫者是 screen-mender runner。
+  - runner 會把 PNG 取到本 run 的 ephemeral `run_dir` 並改名 `before__<state>__<locale>.png`（run 結束即刪，repo / `.audit` 不留檔）。
 
-**standalone 預設**（呼叫者未指定 dest）：
+取圖方式：
 
-```
-.audit/inbox/<platform>/previews/<SnakeName>__<LocaleTag>.png
-```
+兩平台對稱：test 只把圖產到 library 固定位置，「取回 + 改名」一律呼叫者側做，test 碼零落點邏輯。
 
-**呼叫者覆寫**：
-
-- orchestrator（如 screen-mender）可把 PNG pull 到自己的目錄並改名。
-- 本 skill 只保證 on-device 來源檔名固定，dest 由呼叫端決定。
-- 例：screen-mender 會 pull 到 ephemeral run 目錄、改名 `<platform>__<state>__<locale>.png`。
+- Android：test 寫到 on-device `.../snapshots/<SnakeName>__<LocaleTag>.png`；呼叫者 `adb pull <on-device 來源路徑> <絕對 dest>`（dest 是 CLI 參數，直接指到 `run_dir`）。
+- iOS：test record 模式把 baseline 寫到 swift-snapshot 固定位置 `__Snapshots__/<SnapshotTestName>/`（模擬器與 host 共用 FS，xcodebuild 跑完即落地）；呼叫者 `cp` 該檔到 `run_dir` 並改名。
 
 命名規則：
 
-- `<platform>` ∈ `{android, ios}`。
-- 預設路徑相對於 repo root（呼叫端 cwd）。
-- 檔名以 `<SnakeName>` 起手、`__<LocaleTag>` 接尾（雙底線分隔以利後續 parser）。
-- 例：`.audit/inbox/android/previews/use_shield_screen__vi.png` / `.audit/inbox/ios/previews/team_rule_view__id.png`。
+- 來源檔名以 `<SnakeName>` 起手、`__<LocaleTag>` 接尾（雙底線分隔以利後續 parser）。
+- 例：on-device `use_shield_screen__vi.png` / `team_rule_view__id.png`。
 
 `<LocaleTag>` 由 runtime arg 決定；無 arg 則用 host file 內的 `<DefaultLocaleTag>`：
 
@@ -245,7 +240,6 @@ host / test 檔頭部 MUST 加 3 行註解，給下次重跑 / debug 時看：
 新 App 第一次用本 skill 的一次性 setup 見 [`references/setup.md`](references/setup.md)：
 
 - 複製 skill
-- 建 `.audit/inbox/` 目錄
 - 確認 DI 框架在表內
 - iOS swizzler + SnapshotTesting
 - Android debug activity + instrumentation runner

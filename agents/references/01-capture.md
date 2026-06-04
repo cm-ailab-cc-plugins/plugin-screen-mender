@@ -13,9 +13,10 @@
   - 是 → 重用，直接重跑出最新截圖。
   - 否 → 用 Skill `add-snapshot` 在 worktree 內建 test 並出截圖（`capture_locale`）。test 隨修復一起進 MR。
 
-### 2. 跑出截圖並 pull
-- 在 `device_serial` 上跑、pull 截圖到 `<run_dir>/<unified_id>/before__<state>__<locale>.png`。
-- add-snapshot 的 on-device 檔名固定 `<snake>__<locale>.png`；pull 後改名成上面統一命名。
+### 2. 跑出截圖並取回
+- 在 `device_serial` 上跑，把 `<run_dir>/<unified_id>/` 當 dest（傳**絕對路徑**給 add-snapshot，勿用 cwd 相對路徑）。
+  - Android：`adb pull` 從 on-device 路徑取到該 dest；iOS：xcodebuild 跑完後 `cp` swift-snapshot baseline（`__Snapshots__/<test>/`）到該 dest。兩者都呼叫者側取回，test 不碰落點。
+- add-snapshot 的來源檔名固定 `<snake>__<locale>.png`；取回後改名成 `before__<state>__<locale>.png`。
 - 單一 state → `state=default`。
 
 ### 3. 種對 state

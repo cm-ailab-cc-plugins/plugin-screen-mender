@@ -51,6 +51,8 @@ orchestrator 不做 heartbeat 輪詢 / ScheduleWakeup watchdog。每畫面一個
 
 並行單位 = lane，共 `lanes` 條（預設 4，自動降到 ensure-devices 備妥的裝置數）。每條 lane 整 run 獨佔一組資源、從共享 queue 搶畫面、序列消化。
 
+> 起跑序：fan-out **前**先過 SKILL Phase 1.0 **canary 閘**（只用一條 lane 帶 `canary=true` 認領第一個畫面、真 build 一次確認 snapshot harness 能出圖）。canary 回 `harness-missing` → 停整 run；回 `canary-ok` 才放開下列 work-stealing 全量 fan-out。canary 把「缺 harness」的成本從 N 次冷編壓到 1 次。
+
 ### 每 lane 獨佔的資源
 
 > run 起手一次性綁定，整 run 不換。

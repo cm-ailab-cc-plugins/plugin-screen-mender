@@ -27,6 +27,7 @@ model: opus
 - `string_fix_policy`：`local-resource` | `disabled`
 - `dry_run`（預設 false）
 - `ui_framework_pref`：`compose` | `swiftui`
+- `canary`（預設 false）：canary 探針模式。`true` 時**只跑到 capture 過 harness 閘為止**就早退回 `canary-ok`（不進偵測/修復/MR），供 orchestrator 在 fan-out 前確認 harness 能出圖；capture 未過則照常回 `harness-missing`/`locked`/`defect`。
 - `iterate_max`（預設 2）、`internal_loop_max_rounds`（預設 3）
 - `snapshot_test_cmd` / `build_cmd`：選用；若該畫面已有 test、orchestrator 可預填，否則 stage 1 由 add-snapshot 回報後建立
 - `neighborhood_test_cmds`：選用（鄰域 regression）
@@ -83,9 +84,20 @@ model: opus
 - 線性執行，但有早退與有界迴圈。
 - 以下將說明各個階段的控制流程。
 
+### capture 過閘（canary 模式早退）
+
+條件：`canary == true` 且 capture 過了 harness 閘（add-snapshot 成功 build+跑出過 C1–C5 的圖）
+
+- 代表本專案 snapshot harness 能出圖（專案級前置成立）。
+- 執行：標 status `canary-ok` → 跳過其餘 TODO（不偵測/不修/不開 MR）→ 組 return 結束。
+- worktree 已暖（cold build 完成）；orchestrator 收到 `canary-ok` 會放開其餘 lane，並對本畫面另派**正常** runner（`canary=false`），那輪 capture 走 warm 重用。
+
 ### capture 渲染失敗
 
 依照渲染失敗原因，標不同的 status:
+- snapshot harness / 測試相依根本不在（add-snapshot 在「跑 test」因缺 instrumentation runner／測試相依／snapshot lib 而**編不過或 instrument 起不來**，非單畫面問題）: `harness-missing`
+  - 填 `escalation`：缺哪幾項 + 對應 setup 步驟（`add-snapshot/references/setup.md`）+ build error 摘要（grep 自 build.log，勿貼整坨）。
+  - 這是**專案級**缺失：orchestrator 收到會停掉整 run（見 SKILL canary 閘），不是只跳過本畫面。
 - 需要調整 production code: `locked`
 - 一渲染就 crash: `defect`
 
@@ -150,7 +162,9 @@ model: opus
 ## 回報（final message = 給 orchestrator 組總結，精簡）
 
 ```
-unified_id / status: fully-fixed | partially-fixed (n fixed, m deferred-visible) | clean | locked | defect | stuck
+unified_id / status: fully-fixed | partially-fixed (n fixed, m deferred-visible) | clean | locked | defect | stuck | harness-missing | canary-ok
+# harness-missing：專案級 snapshot harness 缺失（capture 撞牆）→ orchestrator 停整 run
+# canary-ok：canary 模式 capture 過閘的早退訊號（非畫面結局）→ orchestrator 放開其餘 lane
 mr_url:          # dry_run → proposed-mr.md 路徑；clean/locked/defect → none
 fixed: [每條一行：缺陷 → 修法(file:line) → tier(T1|T2)，退讓解註記 legibility-degraded 比例]
 residual_visible: [缺陷 + reason(needs-design|deferred-by-run-config)]   # after 圖仍可見者，據 verify Step 3.6

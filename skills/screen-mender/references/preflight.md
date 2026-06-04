@@ -8,11 +8,12 @@
 
 - ❌ **硬缺**（確定且致命）→ 印完整 checklist + 每條「怎麼補」後**終止，不進 Phase 1**。
 - ⚠️ **軟缺**（確定、可降級）→ 列出、降級後**續跑**。
-- ❓ **可能缺**（靜態探測無法 100% 確定）→ 列出「需人工確認」、**不擋**；首個 capture 會真正驗證。
+- ❓ **可能缺**（靜態探測無法 100% 確定）→ 列出「需人工確認」、**不擋**；由 **Phase 1.0 canary 閘**（fan-out 前先用一條 lane 真 build 一次）權威定案。
   - 為何不擋：
     - 專案可能用命名不同的等價機制（例：自訂 swizzler、別名 lib）。
     - 靜態 grep 探不到不代表真的缺；擋了會誤殺。
     - 把確定性留給「實際 capture 出不出得了圖」。
+  - harness 類 ❓（A2 instrumentation runner／I1 snapshot lib／I2 swizzler）若**真的**缺：canary 會以 **1 次冷編**（非 N 次）定案、回 `harness-missing`、**停整 run** 並精準回報缺項 + setup.md 步驟（預設不自動接入）。見 [`SKILL`](../SKILL.md) Phase 1.0。
 
 ## 探測項
 

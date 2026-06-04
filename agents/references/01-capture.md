@@ -55,7 +55,11 @@
 - `capture_report`：C1–C5 是否過 + `fidelity_flags[]`。
 
 ## Exit
+- **canary 過閘**（prompt `canary=true` 且 build+出圖成功）→ status `canary-ok`，**立即早退**（不進偵測/修復/MR），交 orchestrator 放開其餘 lane。worktree 已暖，後續同畫面正常 runner 走 warm 重用。
+- **snapshot harness / 測試相依根本不在**（add-snapshot 在「跑 test」因缺 instrumentation runner／測試相依／snapshot lib 而 build 編不過或 instrument 起不來）→ status `harness-missing`，填 `escalation`（缺哪幾項 + `add-snapshot/references/setup.md` 對應步驟 + build error 摘要）。**專案級缺失**：orchestrator 收到停整 run（見 SKILL canary 閘），非只跳過本畫面。
 - 渲染不出（需 production seam）→ status `locked`。
 - 一渲染就 crash → status `defect`。
-- 上述兩者列 backlog、結束本畫面（其餘 TODO 標掉、不開 MR）。
+- 上述（harness-missing 除外，那是停 run）列 backlog、結束本畫面（其餘 TODO 標掉、不開 MR）。
 - retry 上限仍 fail（暫時性）→ 同上，記 summary。
+
+> harness-missing vs locked 的界線：`locked` = harness 在、但這一個畫面需要動 production code 才出得了圖（單畫面問題、跳過續下一個）；`harness-missing` = 整個專案還沒接 snapshot harness（每個畫面都會撞、續跑無意義 → 停 run、請使用者一次性接入）。

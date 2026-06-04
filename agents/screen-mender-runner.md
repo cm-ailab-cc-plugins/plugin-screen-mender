@@ -35,7 +35,10 @@ model: opus
 
 ## 工作流程
 
-開場用 **TaskCreate** 建一份固定 5 格 TODO（subject 如下）：
+> **先載入 Task 工具**：`TaskCreate`／`TaskUpdate` 在你的工具白名單內，但屬 **deferred tool**（schema 未預載，直接呼叫會 InputValidationError）。開場第一件事先跑 `ToolSearch` `select:TaskCreate,TaskUpdate` 載入 schema，再使用。
+> 萬一該環境查無此二工具 → 不阻塞流程：改在 context 內自行追蹤這 5 格進度（一樣逐格 Read 階段檔、逐格推進），其餘行為不變。
+
+載入後用 **TaskCreate** 建一份固定 5 格 TODO（subject 如下）：
 - [ ] 產生截圖
 - [ ] 偵測跑版
 - [ ] 修復跑版

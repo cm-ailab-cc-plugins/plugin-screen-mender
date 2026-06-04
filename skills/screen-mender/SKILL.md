@@ -23,19 +23,61 @@ description: >-
 
 ## 運作原則
 
-- **只修截圖看得見的缺陷** — 偵測（shot-audit）與驗收（verify 比 after 圖）都靠截圖，範圍 = 截斷／爆框／重疊／錯位／譯文壞／locale 格式錯／對比不可讀。截圖看不見的（如缺 a11y label / `contentDescription`）不在範圍，route 去專屬 a11y pass。完整類別見 [`issue-schemas`](references/issue-schemas.md)。
-- **雙平台、零設定** — 單次 run 鎖定一個平台，由 git repo 檔案特徵自動偵測（Phase 0），無 profile 設定檔；會隨 App 變的值（repo 路徑／build／test／pull／device／git host／base branch／locale／字串落點）起手自動解析。同資料夾並列兩 repo 各自偵測互不干擾。下文「emulator」在 iOS repo 即 simulator。
-- **無狀態** — 不留任何本地紀錄檔；「這畫面修過沒」每次 live 查 git host（merged／open MR）。因為 develop 一直在動、視覺缺陷會回歸，每跑必查才正確。
-- **MR 是唯一 SSOT** — 修了什麼、before/after 截圖、考慮過但不修的理由，全寫在 MR。run 期間暫存放 ephemeral run 目錄（temp／gitignored），run 結束即刪。
-- **不重造輪子** — capture 借 add-snapshot、列舉借 screen-list、單圖偵測借 shot-audit；本 skill 只加 per-screen 認領迴圈、work-stealing、per-lane worktree 重用，和**一個專屬 runner agent**（capture / audit / fix / 審查驗證 / MR 串成它的 5 個內部階段）。無 planner——修法推理由 runner 在真 render 上迭代決定。
-- **全部委派、不輪詢（無 watchdog）** — orchestrator（main session）只做配 lane／認領／**每畫面派一個 runner**／收 summary／發通知；capture／改 code／build／test／截圖／開 MR 全在背景 runner（`run_in_background`）內，orchestrator **不碰截圖·issues·diff·build log**。完成由 harness 通知驅動，不做 ScheduleWakeup 輪詢、不寫 heartbeat 檔。runner 端只保留 self-abort（達迭代上限／build 連錯 3 次 → return stuck）；互動觸發、使用者在線即 backstop。細節見 orchestration.md §1–2。
-- **lane 並行 + 常駐 worktree** — N 條 lane 各佔一台裝置，從共享 queue work-stealing 認領畫面；每條 worktree 整 run 重用、逐畫面換 branch、絕不 clean／重建 → 第 2+ 畫面走增量編譯。每 lane 獨佔裝置 → 無跨-lane 裝置鎖（lane 內 runner 的 capture／verify 本就序列，不需互斥鎖）。細節見 orchestration.md §3–4。
-- **唯一人工點 = PR 把關** — 偵測→修→發 MR 全自動，不設修前 issue 閘；使用者只在每個 per-screen 小 MR 上審 diff + 前後截圖。
-- **production 只在修復階段動** — capture 階段 0-production-diff；真正的修復走 runner 改 production、產 reviewed MR、使用者 gate。
+### 只修截圖看得見的缺陷
+- 偵測與驗收都靠截圖
+- 範圍: 截斷／爆框／重疊／錯位／譯文壞／locale 格式錯／對比不可讀
+- 截圖看不見的不在範圍，route 去專屬 a11y pass
+- 完整類別: [`issue-schemas`](references/issue-schemas.md)
+
+### 雙平台、零設定
+- 單次 run 鎖定一個平台，由 git repo 檔案特徵自動偵測（Phase 0），無 profile 設定檔
+- 會隨 App 變的值起手自動解析
+  - repo 路徑／build／test／pull／device／git host／base branch／locale／字串落點
+- 同資料夾並列兩 repo 各自偵測互不干擾
+- 下文 "emulator" 在 iOS repo 即 "simulator"
+
+### 無狀態
+- 不留任何本地紀錄檔
+- 「這畫面修過沒」每次 live 查 git host（merged／open MR）
+
+### MR 是唯一 SSOT
+- 修了什麼、before/after 截圖、考慮過但不修的理由，全寫在 MR。
+- run 期間暫存放 ephemeral run 目錄（temp／gitignored），run 結束即刪。
+
+### 不重造輪子
+- capture 用 add-snapshot
+- 列舉借 screen-list
+- 單圖偵測借 shot-audit
+- 本 skill 只加 per-screen 認領迴圈、work-stealing、per-lane worktree 重用，和**一個專屬 runner agent**（capture / audit / fix / 審查驗證 / MR 串成它的 5 個內部階段）
+
+### 全部委派、不輪詢
+
+- 只做配 lane／認領／**每畫面派一個 runner**／收 summary／發通知；
+- capture／改 code／build／test／截圖／開 MR 全在背景 runner（`run_in_background`）內，orchestrator **不碰截圖·issues·diff·build log**
+- 完成由 harness 通知驅動，不做 ScheduleWakeup 輪詢、不寫 heartbeat 檔
+- runner 端只保留 self-abort（達迭代上限／build 連錯 3 次 → return stuck）
+- 互動觸發、使用者在線即 backstop。細節見 orchestration.md §1–2。
+
+### lane 並行 + 常駐 worktree
+
+- N 條 lane 各佔一台裝置，從共享 queue work-stealing 認領畫面
+- 每條 worktree 整 run 重用、逐畫面換 branch、絕不 clean／重建 → 第 2+ 畫面走增量編譯
+- 每 lane 獨佔裝置 → 無跨-lane 裝置鎖（lane 內 runner 的 capture／verify 本就序列，不需互斥鎖）
+- 細節見 orchestration.md §3–4。
+
+### 合併 PR 是唯一人工點
+
+- 偵測→修→發 MR 全自動，不設修前 issue 閘
+- 使用者只在每個 per-screen 小 MR 上審 diff + 前後截圖。
+
+### production 只在修復階段動
+
+- capture 階段 0-production-diff
+- 真正的修復走 runner 改 production、產 reviewed MR、使用者 gate。
 
 ## 使用與自建
 
-使用既有 sibling skill（由 runner 在對應階段內呼叫）：
+使用既有 sibling skill ：
 
 - capture: [`../add-snapshot`](../add-snapshot/SKILL.md)
 - 畫面列舉: [`../screen-list`](../screen-list/SKILL.md)
@@ -43,13 +85,13 @@ description: >-
 - triage / schema / 安全約束走自帶 [`references/issue-schemas.md`](references/issue-schemas.md)
 
 screen-mender 自己負責：
-- per-screen 認領迴圈 + work-stealing
-- per-lane worktree 重用
-- 驅動一個 runner agent（其內部 5 階段把 capture / audit 併 triage+AC / fix / 審查驗證 / MR 串起來）
+- 畫面認領迴圈 + work-stealing
+- 每個 lane worktree 重用
+- 每個畫面驅動一個 runner agent 進行修復
 
-### 一個專屬 agent
+### 專屬 agent
 
-**[`screen-mender-runner`](../../agents/screen-mender-runner.md)**（內部 agent，由本 skill Phase 2 spawn，使用者勿直接呼叫）
+**[`screen-mender-runner`](../../agents/screen-mender-runner.md)**
 
 - 職責：**每畫面一個**，獨力跑 capture→audit→fix→審查驗證→MR 共 5 階段，回一段精簡 summary。手持 5 格 TODO，逐格 Read `agents/references/0X-*.md` 階段 prompt 當該階段指令（早退畫面不讀後面幾格、省 context）。
 - 5 個內部階段（詳細規則在各階段檔；orchestrator 不需懂細節）：
@@ -67,8 +109,11 @@ screen-mender 自己負責：
 
 #### 0. 解析環境（零設定，無 profile）
 
-- 平台偵測：當前 git repo（`git rev-parse --show-toplevel`）有 `gradlew`／`*.gradle*` → Android；有 `*.xcodeproj`／`*.xcworkspace`／`Podfile` → iOS；兩者皆無 → 上報「無法判定平台」並終止。
-- repo 路徑 = git toplevel（worktree／鎖目錄皆相對於此）。
+- 平台偵測
+  - Android: 當前 git repo 有 `gradlew`／`*.gradle*`
+  - iOS: repo root 有 `*.xcodeproj`／`*.xcworkspace`／`Podfile`
+  - 兩者皆無: 上報「無法判定平台」並終止。
+- repo 路徑 = git toplevel
 - git host／mr_tool：取 remote host → 含 `gitlab`/`github` 字樣直接判；自託管（host 是 IP／公司域名、無字樣）則看 `glab auth status`／`gh auth status` 哪個**涵蓋此 host**（robust 偵測與實例見 [`references/preflight.md`](references/preflight.md)〈git host 偵測〉；勿只比 URL 字樣——自託管 GitLab 的 remote 常不含 `gitlab` 字樣）。
 - base_branch：取 `git symbolic-ref refs/remotes/origin/HEAD`（取不到 → 偵測 develop／main／master）。
 - 模擬器執行環境
@@ -78,9 +123,16 @@ screen-mender 自己負責：
 - 目標 locale：問使用者要測哪個語系（見 step 5 `capture_locale`）。
 - build／test／pull 指令不在此解析 → 由 runner 於 capture 階段經 add-snapshot 取得後內部重用（fix/verify 階段共用）。
 - **環境快檢（preflight，自動、每次 run、無 `--doctor` 旗標）**：解析完上述後，依 [`references/preflight.md`](references/preflight.md) 一次性 live 探測環境，把缺漏分 ❌硬缺／⚠️軟缺／❓可能缺 三段，列成**單一 checklist**：
-  - 有任一 ❌硬缺（平台測不出／無模擬器執行環境或 ensure-devices 備妥 0 台／git host CLI 缺或未登入［`dry_run` 豁免］／相依 skill·agent 缺／Android SDK 位置無法解析）→ 印 checklist + 每條一句「怎麼補」後**終止，不起跑**。
+  - 有任一 ❌硬缺 → 印 checklist + 每條一句「怎麼補」後**終止，不起跑**。
+    - 平台測不出
+    - 無模擬器執行環境或 ensure-devices 備妥 0 台
+    - git host CLI 缺或未登入［`dry_run` 豁免］
+    - 相依 skill·agent 缺
+    - Android SDK 位置無法解析
   - 無硬缺 → 印 checklist（⚠️軟缺如裝置數<`lanes` 已自動降級；❓可能缺如 snapshot 測試 harness 靜態探不到、標「需人工確認」）後**續跑**。
-  - ❓可能缺一律不擋（靜態無法 100% 確定，擋了會誤殺命名不同的等價設定）；確定性留給首個 capture。零寫檔、維持無狀態。
+  - ❓可能缺一律不擋
+    - 靜態無法 100% 確定，擋了會誤殺命名不同的等價設定
+    - 確定性留給首個 capture。零寫檔、維持無狀態。
 
 #### 1. 決定目標畫面集 → 共享 queue
 
@@ -102,32 +154,62 @@ Reference: orchestration.md §3–4
 
 跑 [`scripts/ensure-devices.sh`](scripts/ensure-devices.sh) `--platform <P> --count <lanes> --prefix <device_prefix> --device-android <device_android> --device-ios <device_ios>`：查自管 `test_phone_NN` pool → 不足自建（指定機型不可用退本機最新；Android 無 avdmanager 走複製現有 AVD）→ 開機 → stdout 回報 ready serial/udid。不需事先手動開模擬器。
 
-起 `lanes` 條 lane（預設 4，自動降到 ensure-devices 備妥的裝置數），每條綁定 1 台回報的裝置 + 1 個常駐 worktree，整 run 重用。
+起 `lanes` 條 lane，每條綁定 1 台回報的裝置 + 1 個常駐 worktree，整 run 重用。
 
 備妥不足 `lanes` → 降到備妥數並 log；備妥 0 台或硬缺 → 終止並印 script 給的「怎麼補」（不靜默縮水）。
 
 #### 5. 參數預設
 
 - `lanes`：`4` — 並行 lane 數；每條獨佔一台 emulator，從共享 queue work-stealing 認領畫面。
-- `device_android`：`Pixel 8` — Android 自動建模擬器用的機型；本機無此 profile 或無 avdmanager → 退用本機最新 Pixel／複製現有 AVD。
-- `device_ios`：`iPhone 16` — iOS 自動建模擬器用的機型；本機無此機型 → 退用本機最新 iPhone。
-- `device_prefix`：`test_phone_` — 自管裝置 pool 命名前綴（`test_phone_01`、`test_phone_02`…）；已存在重用、不夠才補建；run 結束關機保留 profile。
-- `capture_locale`：run 起手問使用者要測哪個目標語系（不預設、不寫設定檔）。repo 只支援單一語系 → 直接用、不必問；多語系 → 必問。原因：「哪個 locale 最該測跑版」是當下判斷，交使用者決定。
-- `string_fix_policy`：**顯式 run 參數，不可由 orchestrator 默默推斷**。只有兩值，決定本 run 能否用「改字串值（含縮短文案）」這條修法：
-  - `local-resource`（預設）：改本地資源檔（`values-<locale>/strings.xml`、`Localizable.strings`）。
-  - `disabled`：本 run 不改任何字串。
-  - 字串非本地資源檔可改的專案（由專案自身決定）：在自身 rule/CLAUDE.md 設 `disabled` 並自理修法流程——plugin 不內建任何專案專屬的字串機制（零專案 lore）。
-  - 鐵則：採 `disabled` 等於關閉 §3 優先序第 1 順位（縮短文案）。起手必須問使用者、或明確預設並告知；因此無法乾淨修的 in-scope 缺陷一律標 `deferred:deferred-by-run-config`（不得偽裝成 needs-design、不得默默改用縮字級）。見 [`issue-schemas`](references/issue-schemas.md) §2/§3。
+- `device_android`：`Pixel 8`
+  - Android 自動建模擬器用的機型
+  - 本機無此 profile 或無 avdmanager → 退用本機最新 Pixel／複製現有 AVD。
+- `device_ios`：`iPhone 16`
+  - iOS 自動建模擬器用的機型
+  - 本機無此機型 → 退用本機最新 iPhone。
+- `device_prefix`：`test_phone_`
+  - 自管裝置 pool 命名前綴（`test_phone_01`、`test_phone_02`…）
+  - 已存在重用、不夠才補建
+  - run 結束關機保留 profile
+- `capture_locale`：run 起手問使用者要測哪個目標語系
+  - repo 只支援單一語系 → 直接用、不必問
+  - 多語系 → 必問
+  - 原因：「哪個 locale 最該測跑版」是當下判斷，交使用者決定。
+- `string_fix_policy`：顯式 run 參數，不可由 orchestrator 默默推斷
+  - 只有兩值，決定本 run 能否用「改字串值（含縮短文案）」這條修法：
+    - `local-resource`（預設）：改本地資源檔（`values-<locale>/strings.xml`、`Localizable.strings`）。
+    - `disabled`：本 run 不改任何字串。
+  - 鐵則：採 `disabled` 等於關閉 §3 優先序第 1 順位（縮短文案）
+    - 起手必須問使用者、或明確預設並告知
+    - 因此無法乾淨修的 in-scope 缺陷一律標 `deferred:deferred-by-run-config`
+    - 詳情見 [`issue-schemas`](references/issue-schemas.md) §2/§3。
 - `extra_audit_locales`：`[]` — opt-in 多語系翻譯正確性檢查。
 - `neighborhood_regression`：`true`。
-- `dry_run`：`false` — 試跑模式。照常跑 capture→audit→fix→review→verify，但**不 push production branch、不開 MR**。每畫面把 patch（`git format-patch <base>..HEAD`）＋ before/after 截圖 ＋ 會寫進 MR 的內容（`proposed-mr.md`，schema 同 [`issue-schemas`](references/issue-schemas.md) §4）落本 run 目錄；run 結束**不刪** run 目錄、回報其路徑（lane worktree 照清）。觸發：`/screen-mender --dry-run [畫面...]`、「試跑 screen-mender」「先別開 MR、給我看會怎麼改」。
-- `trace`：`false` — true → final summary 附每畫面逐階段耗時 + build 次數的完整 breakdown（預設只附 compact 一行）。觀測機制見 [`orchestration`](references/orchestration.md) §7。觸發：`/screen-mender --trace ...`、「想看它各階段花多久」。
+- `dry_run`：`false`
+  - 此為試跑模式
+  - 照常跑 capture→audit→fix→review→verify
+  - **不 push production branch、不開 MR**
+  - 每畫面把 patch落本 run 目錄，包含以下內容
+    - `git format-patch <base>..HEAD`
+    - before/after 截圖
+    - `proposed-mr.md`，schema 同 [`issue-schemas`](references/issue-schemas.md) §4
+  - run 結束**不刪** run 目錄、回報其路徑（lane worktree 照清）。觸發：`/screen-mender --dry-run [畫面...]`、「試跑 screen-mender」「先別開 MR、給我看會怎麼改」。
+- `trace`：`false`
+  - 是否要記錄 skill 分析數據
+  - 設為 true 時， final summary 附上以下資訊
+    - 每畫面逐階段耗時
+    - build 次數的完整 breakdown
+  - 觀測機制見 [`orchestration`](references/orchestration.md) §7
+  - 觸發：`/screen-mender --trace ...`、「想看它各階段花多久」。
 
 #### 6. 起跑確認
 
-- `dry_run=true` → 不開任何 MR：一句告知「dry-run：不會開 MR，產物將落 `<run_dir>`」後進 Phase 1。
-- `dry_run=false` 且目標畫面數 > 1（掃全部或多個指定畫面）→ 起跑前明確等使用者確認一次：「即將處理 N 個畫面，最多開 N 個小 MR（draft）＋ push N 條 branch 到 `<base_branch>`；繼續？（或加 `--dry-run` 只看不開）」。使用者已明確要求「直接跑」／帶 `--yes` → 跳過。
-- 單一明確指定畫面（N==1）→ 視為明確意圖，免閘。
+起跑時，當以下條件滿足時，需要向使用者告知後續行為：
+- `dry_run=true`
+  - 一句告知「dry-run：不會開 MR，產物將落 `<run_dir>`」後進 Phase 1。
+- `dry_run=false` 且目標畫面數 > 1
+  - 起跑前明確等使用者確認一次：「即將處理 N 個畫面，最多開 N 個小 MR（draft）＋ push N 條 branch 到 `<base_branch>`；繼續？（或加 `--dry-run` 只看不開）」
+  - 使用者已明確要求「直接跑」／帶 `--yes` → 跳過。
 
 ### Phase 1：認領下一個畫面 + 派 runner（原子）
 
@@ -142,10 +224,17 @@ Reference: orchestration.md §3–4
 
 ### Phase 2：runner 跑完整畫面閉環（背景）
 
-runner 獨力跑 capture→audit→fix→review→verify→MR（細節見 [`screen-mender-runner`](../../agents/screen-mender-runner.md) 與其 `agents/references/0X-*.md` 階段檔），完成回一段精簡 summary。orchestrator 對本畫面只做三件事：**傳對 prompt 欄位 → 收 summary → 發通知 + 釋放 lane**，全程不碰截圖／issues／diff／build log。
+runner 獨力執行單一畫面的修復，完成後會回一段精簡 summary。
+orchestrator 對本畫面只做三件事：
+- 傳對 prompt 欄位
+- 收 summary
+- 發通知 + 釋放 lane
 
-**傳給 runner 的 prompt 欄位**（orchestrator 已知值轉傳，runner 不讀設定檔）：
+全程不碰截圖／issues／diff／build log
 
+#### 傳給 runner 的 prompt 欄位
+
+orchestrator 已知值轉傳，runner 不讀設定檔
 - `run_dir`、`unified_id`、`platform`
 - `worktree`、`branch`、`feature_branch_prefix`、`repo_canonical_path`
 - `device_serial`（本 lane 獨佔）

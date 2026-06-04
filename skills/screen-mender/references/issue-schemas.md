@@ -18,9 +18,13 @@ screen-mender 全程截圖驅動：
 
 - `truncation-risk` / `wrap-overflow` / `overlap`：文字截斷、換行爆框、元件重疊。
 - `hardcoded-string` / `translation-broken`：未走字串系統而顯示錯字，或譯文壞、顯示 raw key。
-- `locale-format`：**明顯錯誤**的日期／週幾／數字格式（raw、壞）。不含「該不該加千分位／用哪種分隔符」這類風格選擇——那是設計決策（分隔符還會 sim≠真機），標 `deferred:needs-design`／systemic，不逐畫面硬加（過度修復＝改了非缺陷）。
+- `locale-format`：**明顯錯誤**的日期／週幾／數字格式（raw、壞）。
+  - 不含「該不該加千分位／用哪種分隔符」這類風格選擇——那是設計決策（分隔符還會 sim≠真機）。
+  - 標 `deferred:needs-design`／systemic，不逐畫面硬加（過度修復＝改了非缺陷）。
 - `localized-image`：圖片內燒死的文字應隨 locale 切換卻沒切（目標語系變體缺＝真缺陷；變體在＝harness 假象、仍旗標；見 §3.5）。
-- `contrast`：對比不可讀（截圖看得見）。修法改文字／底色色值＝可見變更，**不可報「視覺等價」**；換色取自畫面既有色盤，觸品牌色傾向人工確認。
+- `contrast`：對比不可讀（截圖看得見）。
+  - 修法改文字／底色色值＝可見變更，**不可報「視覺等價」**。
+  - 換色取自畫面既有色盤，觸品牌色傾向人工確認。
 
 ### 不修的類別
 
@@ -45,7 +49,8 @@ audit 階段 agent 對每條 issue 標一種歸屬，寫進 MR description，不
   - 例外：issue 帶設計來源 node ID + 視覺證據時不算。
 - `false-positive`：OCR／視覺誤判，code 實際正確。
 - `platform-native`：平台慣例差異（如標題置中 vs 靠左），非 bug。
-- `non-visual`：問題真實但截圖上看不見 → 截圖驅動的 screen-mender 既偵測不到也驗收不了，route 去專屬 a11y pass，不在此修。
+- `non-visual`：問題真實但截圖上看不見。
+  - 截圖驅動的 screen-mender 既偵測不到也驗收不了，route 去專屬 a11y pass，不在此修。
   - 例：缺 a11y label / contentDescription / 純語意無障礙。
 - `out-of-scope`：真實存在、但不是視覺缺陷。不屬 §1 任一修的類別 → screen-mender 不處理。
   - 例：行為／互動 bug（如 onClick 空 TODO）、純 code-quality nit（如未走 design token 但渲染正常）、需功能 PR 或設計決策者。
@@ -72,7 +77,10 @@ after 圖仍可見 → 列殘留可見、畫面降 `partially-fixed`。
   - 與 `needs-design` 嚴格區分：needs-design 是「不知道怎麼修才對」；deferred-by-run-config 是「知道怎麼修、只是這個 run 不准修」。
   - 鐵則：不可把 config 限制誤標成 needs-design（會淡化「其實已知可修、是我關掉的」這個事實），也不可因此默默改用縮字級硬塞。
 
-fix 階段中途發現 deferred → 用 return 的 `deferred[]` 回報（見 [`03-fix`](../../../agents/references/03-fix.md)），runner 在 mr 階段列入 MR 殘留可見段（最顯眼處），不靜默吞。
+fix 階段中途發現 deferred：
+
+- 用 return 的 `deferred[]` 回報（見 [`03-fix`](../../../agents/references/03-fix.md)）。
+- runner 在 mr 階段列入 MR 殘留可見段（最顯眼處），不靜默吞。
 
 ## 3. 修復安全約束（outcome-based：守「結果」不守「手段」）
 
@@ -115,7 +123,12 @@ T2 vs R 的判準（最關鍵）：問「修完截圖除了缺陷處，其餘看
 
 ### 渲染保真度：改寫自訂繪製原語（render-fidelity）
 
-版面修復（換行／放寬容器／對齊）有時需要改寫「控制視覺紋理的自訂繪製原語」——自訂描邊／外框文字、nativeCanvas／Paint 繪製、`drawStyle = Stroke`、shader、自訂字形渲染。要警覺一件事：**達成同樣的 layout ≠ 產生同樣的像素**。換掉渲染技術（例：絕對座標描邊字 → 路徑 Stroke 疊層）即使位置／換行對了，字形筆畫粗細、外框觀感、(尤其非拉丁) 變音／聲調符號清晰度都可能變樣——這在「視覺等價」判準下其實是 FAIL，卻最容易騙過只看「位置對不對、有沒有截斷」的把關。
+版面修復（換行／放寬容器／對齊）有時需要改寫「控制視覺紋理的自訂繪製原語」。
+
+- 這類原語：自訂描邊／外框文字、nativeCanvas／Paint 繪製、`drawStyle = Stroke`、shader、自訂字形渲染。
+- 要警覺一件事：**達成同樣的 layout ≠ 產生同樣的像素**。
+  - 換掉渲染技術（例：絕對座標描邊字 → 路徑 Stroke 疊層）即使位置／換行對了，字形筆畫粗細、外框觀感、(尤其非拉丁) 變音／聲調符號清晰度都可能變樣。
+  - 這在「視覺等價」判準下其實是 FAIL，卻最容易騙過只看「位置對不對、有沒有截斷」的把關。
 
 - 優先最小改動保留原渲染：能在原元件上加寬度約束／換行而不換渲染技術，就別重寫。
 - 若版面修復非重寫渲染不可（原本絕對座標、本就不能換行）→ 視為 **high-fidelity-risk T2**：
@@ -141,7 +154,11 @@ T2 vs R 的判準（最關鍵）：問「修完截圖除了缺陷處，其餘看
 
 ### overflow / truncation 的修法選擇（優先序強制）
 
-對 overflow / truncation / wrap，developer（audit 的修法 hint 可建議）不再被分類綁死只能 modifier，應在真 render 上依下列優先序挑「視覺結果最乾淨」的，且在 return 逐一說明為何跳過更高順位（為何不縮文案、為何不長高／放寬容器）才落到下一順位。
+對 overflow / truncation / wrap：
+
+- developer（audit 的修法 hint 可建議）不再被分類綁死只能 modifier。
+- 應在真 render 上依下列優先序挑「視覺結果最乾淨」的。
+- 在 return 逐一說明為何跳過更高順位（為何不縮文案、為何不長高／放寬容器）才落到下一順位。
 
 1. 縮短字串值（屬 T1）——改本地資源檔。
    - 本 run 是否允許改字串由 `string_fix_policy`（`local-resource`／`disabled`）決定（見 SKILL Phase 0）；字串非本地可改的專案在自身 rule 處理。
@@ -160,20 +177,35 @@ T2 vs R 的判準（最關鍵）：問「修完截圖除了缺陷處，其餘看
 
 ### 放寬換行 / maxLines / 寬度約束 → 必須同時接住多行對齊
 
-「讓元素換行／放寬 maxLines／改寬度約束」這類修法，幾乎一定要同時確認該元素多行時的對齊，否則是把「截斷」換成「跑版」（多出一條對齊缺陷）。
+「讓元素換行／放寬 maxLines／改寬度約束」這類修法：
+
+- 幾乎一定要同時確認該元素多行時的對齊。
+- 否則是把「截斷」換成「跑版」（多出一條對齊缺陷）。
 
 - 典型陷阱（Compose）：靠父 `horizontalAlignment` 置中的 wrap-content `Text`，放寬 maxLines 後第 2 行依 `Text` 自身 `textAlign`（預設 `Start`）靠左 → 須同時加 `textAlign = TextAlign.Center`（通常配 `Modifier.fillMaxWidth()`），對既有單行 consumer 視覺等價、多行才正確。SwiftUI 同理：frame `alignment` ≠ `.multilineTextAlignment`。
 - 此類修法的 AC 必含一條「該元素多行後維持原對齊／置中／視覺處理」（見 §4）；audit 偵測到「靠父層 alignment 置中、元素無自身 textAlign」結構時，主動把「一換行就破置中」列為風險寫進 AC。
 
 ## 3.5 截圖可信度：snapshot ≠ 真機時，誠實標 unverifiable，不准當 false-positive
 
-screen-mender 全靠截圖偵測＋驗收，但截圖可能不忠於真機。以下三種情形一律當「未驗證」處理，不可一句「真機會對」打發（那是假設不是事實，會關掉真 bug）：
+screen-mender 全靠截圖偵測＋驗收，但截圖可能不忠於真機。
 
-- **非確定性 capture**：內容隨機（`.shuffled()`／無 seed）、async 狀態、自訂字型間歇 fallback → before/after 會因與修復無關的原因不同，視覺等價掃描失效。判定法：同 state 連拍兩張，不一致即非確定 → seed 固定它，或無 seam 就標 `capture-nondeterministic`（類 locked），**不得交出兩張不同畫面的 before/after，也不得在其上判 PASS**。
-- **locale 未完整套用**：capture harness 若只換 app 字串、沒換 `Locale.current`／`Calendar.current`（日期／數字／週幾）與 asset `preferredLocalizations`（在地化圖），則目標語系截圖裡這些仍顯示模擬器語系 → `locale-format` 與 `localized-image` 正確性 **unverifiable**，標旗標轉人工／真機抽驗，**不得**標 `wont-fix:false-positive`（缺目標變體的在地化圖就是真缺陷）。
-- **非目標語系文字出現**（如 vi run 出現 CJK）必三分：① hardcoded／錯字串＝真缺陷；② `Locale.current` formatter 假象＝unverifiable，旗標；③ 在地化圖顯示錯變體——查 asset catalog 有無目標變體：缺＝真 `deferred:needs-design`、在＝harness 假象但仍旗標。禁一律打 false-positive。
+以下三種情形一律當「未驗證」處理，不可一句「真機會對」打發（那是假設不是事實，會關掉真 bug）：
 
-誠實鐵則（跨上述全部）：**after 圖只要還看得到缺陷，畫面就不是 fully-fixed**，不論歸因（字型 fallback／Locale.current／洗牌）——至少 partially-fixed＋殘留可見，或標 capture 不可信。修復正確性無法在 after 圖呈現者（改用 native API 但 sim 仍顯舊值、before/after byte-identical）標 `code-verified／snapshot-unverifiable`，不得報 fully-fixed。
+- **非確定性 capture**：內容隨機（`.shuffled()`／無 seed）、async 狀態、自訂字型間歇 fallback → before/after 會因與修復無關的原因不同，視覺等價掃描失效。
+  - 判定法：同 state 連拍兩張，不一致即非確定 → seed 固定它，或無 seam 就標 `capture-nondeterministic`（類 locked）。
+  - **不得交出兩張不同畫面的 before/after，也不得在其上判 PASS**。
+- **locale 未完整套用**：capture harness 若只換 app 字串、沒換 `Locale.current`／`Calendar.current`（日期／數字／週幾）與 asset `preferredLocalizations`（在地化圖），則目標語系截圖裡這些仍顯示模擬器語系 → `locale-format` 與 `localized-image` 正確性 **unverifiable**。
+  - 標旗標轉人工／真機抽驗，**不得**標 `wont-fix:false-positive`（缺目標變體的在地化圖就是真缺陷）。
+- **非目標語系文字出現**（如 vi run 出現 CJK）必三分：
+  - ① hardcoded／錯字串＝真缺陷。
+  - ② `Locale.current` formatter 假象＝unverifiable，旗標。
+  - ③ 在地化圖顯示錯變體——查 asset catalog 有無目標變體：缺＝真 `deferred:needs-design`、在＝harness 假象但仍旗標。
+  - 禁一律打 false-positive。
+
+誠實鐵則（跨上述全部）：
+
+- **after 圖只要還看得到缺陷，畫面就不是 fully-fixed**，不論歸因（字型 fallback／Locale.current／洗牌）——至少 partially-fixed＋殘留可見，或標 capture 不可信。
+- 修復正確性無法在 after 圖呈現者（改用 native API 但 sim 仍顯舊值、before/after byte-identical）標 `code-verified／snapshot-unverifiable`，不得報 fully-fixed。
 
 ## 4. 紀錄去處：MR 是唯一 SSOT（零本地紀錄檔）
 
@@ -218,7 +250,12 @@ screen-mender 全靠截圖偵測＋驗收，但截圖可能不忠於真機。以
 - `自動跑版修復：use_shield_screen - 連勝盾牌標題截斷`
 - `自動跑版修復（部分）：team_rule_view - 規則標題爆框`（1 修 / 1 延後）
 
-標題狀態鐵則（決定用哪個 variant）：畫面狀態由「所有 kept+deferred 缺陷是否都已解決」計（非「我選去修的那幾條過 verify 沒」）。只要有任一 `kept`/`deferred` 缺陷在 after 圖仍可見，**必用「（部分）」variant**，不得用全修復 variant；並把殘留項列在最顯眼處（殘留可見段，不可只藏在「考慮過但不修」段）。summary 標題同此狀態規則。
+標題狀態鐵則（決定用哪個 variant）：
+
+- 畫面狀態由「所有 kept+deferred 缺陷是否都已解決」計（非「我選去修的那幾條過 verify 沒」）。
+- 只要有任一 `kept`／`deferred` 缺陷在 after 圖仍可見，**必用「（部分）」variant**，不得用全修復 variant。
+  - 並把殘留項列在最顯眼處（殘留可見段，不可只藏在「考慮過但不修」段）。
+- summary 標題同此狀態規則。
 
 ```markdown
 ## 狀態：fully-fixed | partially-fixed (n fixed, m deferred-visible) | clean

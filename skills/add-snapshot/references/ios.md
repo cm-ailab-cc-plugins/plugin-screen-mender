@@ -1,10 +1,13 @@
 # add-snapshot — iOS 細節規則
 
-> 平台 = iOS 時只讀本檔，不要讀 `android.md`。共用骨架（流程 6 階段、self-verify、SLA、output）回 SKILL.md；placeholder 表見 [`placeholders.md`](placeholders.md)、接入見 [`setup.md`](setup.md)、iOS 陷阱見本檔 §常見陷阱（iOS）。
+> 平台 = iOS 時只讀本檔，不要讀 `android.md`。
+> 共用骨架（流程 6 階段、self-verify、SLA、output）回 SKILL.md。
+> 註：placeholder 表見 [`placeholders.md`](placeholders.md)、接入見 [`setup.md`](setup.md)、iOS 陷阱見本檔 §常見陷阱（iOS）。
 
 ## DI 偵測
 
-依下表順序偵測，命中其一即停；未命中 → fail-fast 上報。
+- 依下表順序偵測，命中其一即停。
+- 未命中 → fail-fast 上報。
 
 | 平台 | DI 系統 | 偵測訊號（檔案 / 字串） | host 載入種子方式 |
 |---|---|---|---|
@@ -114,7 +117,8 @@ final class <SnapshotTestName>: XCTestCase {
 
 ### 範本 E：iOS UIKit cell / `UITableViewHeaderFooterView` / xib view（從 nib 載入，非 storyboard、非 VC）
 
-適用：tableview header/footer、cell、或任何從 `.xib` 載入的 `UIView` 子類。perfB 實證可跑。
+- 適用：tableview header/footer、cell、或任何從 `.xib` 載入的 `UIView` 子類。
+- perfB 實證可跑。
 
 ```swift
 @testable import <ModuleName>
@@ -171,7 +175,9 @@ final class <SnapshotTestName>: XCTestCase {
 }
 ```
 
-pbxproj：同範本 C/D——test 檔須加進 `<TestTargetName>` 的 PBXSourcesBuildPhase（4 anchors），否則 `Executed 0 tests`。詳見下方 §常見陷阱（iOS）。
+pbxproj：同範本 C/D。
+- test 檔須加進 `<TestTargetName>` 的 PBXSourcesBuildPhase（4 anchors），否則 `Executed 0 tests`。
+- 詳見下方 §常見陷阱（iOS）。
 
 ## 跑特定 locale 的命令
 
@@ -187,7 +193,7 @@ TEST_RUNNER_SNAPSHOT_LOCALE=<LocaleTag> xcodebuild test \
 
 `TEST_RUNNER_` prefix 必填——Xcode 標準機制，裸 env 無效。
 
-**批量跑多 locale**（一次跑一個語系）：
+#### 批量跑多 locale（一次跑一個語系）
 
 ```shell
 for loc in vi ja ko id; do
@@ -195,11 +201,13 @@ for loc in vi ja ko id; do
 done
 ```
 
-> 執行方式（同步阻塞跑一次、redirect log、禁輪詢）兩平台共通，見 SKILL.md §9.1a 尾段。
+> 註：執行方式（同步阻塞跑一次、redirect log、禁輪詢）兩平台共通，見 SKILL.md §9.1a 尾段。
 
 ## 常見陷阱（iOS）
 
-吸收歷次 retro 教訓的防呆清單。平台無關陷阱見 SKILL.md §11；`TEST_RUNNER_` env prefix、`HeaderFooterView.contentView` 不可 reparent 已在上方 §跑命令 / §Host 範本 範本 E 註解內。
+- 吸收歷次 retro 教訓的防呆清單。
+- 平台無關陷阱見 SKILL.md §11。
+- `TEST_RUNNER_` env prefix、`HeaderFooterView.contentView` 不可 reparent 已在上方 §跑命令 / §Host 範本 範本 E 註解內。
 
 | 陷阱 | 防呆做法 |
 |---|---|

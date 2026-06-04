@@ -9,11 +9,16 @@
 - ❌ **硬缺**（確定且致命）→ 印完整 checklist + 每條「怎麼補」後**終止，不進 Phase 1**。
 - ⚠️ **軟缺**（確定、可降級）→ 列出、降級後**續跑**。
 - ❓ **可能缺**（靜態探測無法 100% 確定）→ 列出「需人工確認」、**不擋**；首個 capture 會真正驗證。
-  - 為何不擋：專案可能用命名不同的等價機制（例：自訂 swizzler、別名 lib），靜態 grep 探不到不代表真的缺；擋了會誤殺。把確定性留給「實際 capture 出不出得了圖」。
+  - 為何不擋：
+    - 專案可能用命名不同的等價機制（例：自訂 swizzler、別名 lib）。
+    - 靜態 grep 探不到不代表真的缺；擋了會誤殺。
+    - 把確定性留給「實際 capture 出不出得了圖」。
 
 ## 探測項
 
-平台先測（項 1）。harness／DI 類的「該長怎樣」一律以 [`../../add-snapshot/references/setup.md`](../../add-snapshot/references/setup.md) 與 [`../../add-snapshot/references/<platform>.md`](../../add-snapshot/references/) 為準，本檔只列「探什麼訊號、缺了去哪補」，不複製專案 lore。
+- 平台先測（項 1）。
+- harness／DI 類的「該長怎樣」一律以 [`../../add-snapshot/references/setup.md`](../../add-snapshot/references/setup.md) 與 [`../../add-snapshot/references/<platform>.md`](../../add-snapshot/references/) 為準。
+- 本檔只列「探什麼訊號、缺了去哪補」，不複製專案 lore。
 
 > grep 探測在 zsh 下記得用引號包住 glob（`--include='*.gradle'`），否則被當檔名展開、報 `no matches found`。
 

@@ -119,9 +119,12 @@ screen-mender（orchestrator）自己負責：
     - 平台測不出
     - 無模擬器執行環境或 ensure-devices 備妥 0 台
     - git host CLI 缺或未登入［`dry_run` 豁免］
+    - git transport 不通（`ls-remote` 失敗）或無 push 權限［`dry_run` 豁免 push 探測，`ls-remote` 仍查］
+    - `curl` 或截圖上傳 token 缺［`dry_run` 豁免］
+    - 磁碟空間不足以冷編（< 一次冷編所需）
     - 相依 skill·agent 缺
     - Android SDK 位置無法解析
-  - 無硬缺 → 印 checklist（⚠️軟缺如裝置數<`lanes` 已自動降級；❓可能缺如 snapshot 測試 harness 靜態探不到、標「需人工確認」）後**續跑**。
+  - 無硬缺 → 印 checklist（⚠️軟缺如裝置數<`lanes` 已自動降級、清掉上一輪 crash 殘留的 worktree/claim、機型/runtime fallback 致 snapshot 基準恐失真；❓可能缺如 snapshot 測試 harness 靜態探不到、標「需人工確認」）後**續跑**。
   - ❓可能缺一律不擋
     - 靜態無法 100% 確定，擋了會誤殺命名不同的等價設定
     - 確定性留給首個 capture。零寫檔、維持無狀態。
@@ -298,7 +301,7 @@ main session 輸出嚴格限縮在 milestone：
 
 ### 失敗模式
 
-- 相依 skill（add-snapshot／shot-audit／screen-list）或 runner agent 缺失 → Phase 0 preflight 即列為 ❌硬缺、印 checklist 後終止（見 [`references/preflight.md`](references/preflight.md)），不留到起動後才反應式爆出。其餘環境硬缺（無裝置／git CLI 未登入／Android SDK 測不到）亦同階段一次攔下。
+- 相依 skill（add-snapshot／shot-audit／screen-list）或 runner agent 缺失 → Phase 0 preflight 即列為 ❌硬缺、印 checklist 後終止（見 [`references/preflight.md`](references/preflight.md)），不留到起動後才反應式爆出。其餘環境硬缺（無裝置／git host 未登入／git transport 不通或無 push 權限／`curl` 或上傳 token 缺／磁碟不足／Android SDK 測不到）亦同階段一次攔下。
 - manifest 列舉失敗 → 上報「screen-list 未產出 `screen-list.json`」。
 - 某畫面卡 locked／defect／stuck → 不阻塞整 run，列入 summary backlog、續下一畫面。
 - 全部畫面 locked／defect／clean、零可修 → final summary 標 `nothing-to-fix`。

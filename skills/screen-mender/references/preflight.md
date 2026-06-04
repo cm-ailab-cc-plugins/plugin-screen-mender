@@ -31,6 +31,11 @@
 | 3 | ⚠️/❌ | 裝置自動準備 | 跑 [`scripts/ensure-devices.sh`](../scripts/ensure-devices.sh) `--platform <P> --count <lanes>`：查自管 `test_phone_NN` pool→不足自建（指定機型不可用退本機最新；Android 無 avdmanager 走複製現有 AVD）→開機→stdout 回報 ready serial/udid | 回報 M 台：`M≥1`→以 M 條 lane 續跑（`M<lanes` 標降級、不靜默縮水）；`M=0` 或 script 印硬缺→終止（附 script 給的「怎麼補」） |
 | 4 | ❌* | git host CLI 可用 | 取 remote host（見下〈git host 偵測〉）→ 對應 CLI（gitlab→`glab`／github→`gh`）已安裝且 `auth status` **涵蓋此 host** | host 判不出／對應 CLI 缺／該 host 未登入 → 硬缺。*`dry_run=true` 豁免（不開 MR）* |
 | 5 | ❌ | 相依 skill·agent | sibling skill `add-snapshot`/`screen-list`/`shot-audit` ＋ agent `screen-mender-runner`（及其 `agents/references/01..05-*.md` 階段檔）皆在 | 任一缺→硬缺終止（依賴缺失無法起動） |
+| 6 | ⚠️/❌ | 磁碟空間 | `df -k` repo toplevel ＋ tmp 可用空間（N lane＝N worktree＋N 台模擬器＋N 份冷編產物，整 run 最吃空間） | `<~5GB`（連一次冷編都不夠）→硬缺「清空間後重試」；`<lanes×~8GB`（概估、因 app 而異）→軟缺：降 lanes 或清空間後以較少 lane 續跑 |
+| 7 | ❌* | git transport（push/fetch，與項 4 的 API 登入不同層） | `git ls-remote --heads origin` exit 0（讀路徑＋credential＋reachability）；`git push --dry-run origin HEAD:refs/heads/__sm-preflight-probe__` exit 0（寫權限；dry-run 不真的建 ref） | ls-remote 失敗→硬缺（SSH key／credential helper／網路不通；提示 `ssh -T <host>`／設 credential helper）；dry-run push 被拒→硬缺（無 push 權限／base 受保護）。*`dry_run=true` 豁免 push 探測，ls-remote 仍查（capture 仍要 fetch base）* |
+| 8 | ❌* | 截圖上傳依賴（§5.3：嵌 MR 走 `curl`＋token，與 API 登入分離） | `command -v curl` 在；`<mr_tool> auth token`（glab／gh 皆支援）回非空 token | curl 缺→硬缺「裝 curl」；token 取不到→硬缺「`glab`／`gh auth login` 重登，或設 `GITLAB_TOKEN`／`GH_TOKEN`」。*`dry_run=true` 豁免（不上傳）* |
+| 9 | ⚠️ | 上一輪殘留本地狀態（無狀態設計的漏點） | `<repo>/.screen-mender/claims`、`/locks` 無殘留；`git worktree list` 無上一輪 `screen-mender-lane*` | 有殘留→軟缺（前一輪 crash 未走 teardown）→自動清掃：`git -C <repo> worktree prune` ＋ `git worktree remove --force` 殘留 lane worktree ＋ `rm -rf <repo>/.screen-mender/claims <repo>/.screen-mender/locks`，清完續跑。只動 screen-mender 自管路徑（單一互動 run，殘骸＝前輪 crash，清掃安全） |
+| 10 | ❓/⚠️ | snapshot 基準裝置對齊（step 4 ensure-devices 回報後對賬，非純靜態） | ensure-devices 解析出的裝置型號＋runtime（由 serial/udid 反查：iOS `xcrun simctl list devices`／Android `adb -s <serial> shell getprop ro.product.model`＋`ro.build.version.sdk`）對得上 snapshot suite 期望基準（grep test／snapshot 設定的 device/OS pin） | 發生機型/runtime fallback（指定機型不可用退「本機最新」），或偵測到 suite pin 與解析裝置不符→軟缺「snapshot 基準恐失真：reference image 綁裝置型號＋OS 版本，capture 偵測與 verify 比對結果存疑；建議 `--device-android`／`--device-ios` 釘住 suite 基準機型」。suite 期望靜態測不準時降 ❓「需人工確認」、不擋 |
 
 > **git host 偵測（self-hosted 也要對，勿只比 URL 字樣）**：
 > 1. 取 host：`git remote get-url origin` → 去 scheme/user，留 host（`ssh://git@H:port/…`／`git@H:path` → `H`）。
@@ -62,10 +67,12 @@
 ```
 screen-mender 環境快檢 · 平台 Android · 目標裝置 4 台
 ✅ 模擬器執行環境（adb＋emulator＋SDK）   ✅ git host gitlab（glab 已登入）
-✅ 相依 skill/agent 齊                      ✅ Android SDK（local.properties sdk.dir）
+✅ git transport（ls-remote＋push dry-run OK）   ✅ 截圖上傳（curl＋glab token）
+✅ 相依 skill/agent 齊   ✅ Android SDK（local.properties sdk.dir）   ✅ 磁碟 84GB 可用
 ⚠️ 軟缺（降級後續跑）
    · 裝置自動準備備妥 2/4 台（無 avdmanager＋僅 1 個可複製模板）→ 本 run 降為 2 條 lane
-   · 找不到指定機型 Pixel 8 → 已退用本機最新機型 pixel_10
+   · 找不到指定機型 Pixel 8 → 已退用本機最新機型 pixel_10 ⇒ snapshot 基準恐失真（建議 --device-android 釘住 suite 基準機型）
+   · 清掉上一輪殘留：1 個 screen-mender-lane worktree ＋ .screen-mender/claims
 ❓ 可能缺（需人工確認，首個 capture 會驗證）
    · 找不到 instrumentation runner 設定（build.gradle 無 testInstrumentationRunner）→ add-snapshot/setup.md step 7
 判定：無硬缺 → 續跑（2 lane）
@@ -77,6 +84,8 @@ screen-mender 環境快檢 · 平台 iOS · 目標裝置 4 台
 ✅ 裝置自動準備：test_phone_01..04 已建/重用並開機（4/4）
 ❌ 硬缺（無法起跑，請先補齊）
    · glab 未登入 → `glab auth login`
+   · 截圖上傳 token 取不到（glab auth token 為空）→ glab auth login 重登，或設 GITLAB_TOKEN
+   · 磁碟僅 3.1GB 可用（< 一次冷編）→ 清空間後重試
 判定：有硬缺 → 終止，未起跑
 ```
 
@@ -85,4 +94,4 @@ screen-mender 環境快檢 · 平台 iOS · 目標裝置 4 台
 - 任一 ❌ 硬缺 → 印 checklist（每條附一句「怎麼補」或 setup.md 指引）+ **終止**，不進 Phase 1。
 - 無硬缺 → 印 checklist（含 ⚠️ 已降級與 ❓ 待確認）後**續跑**。
 - ❓ 可能缺一律不擋（理由見〈判級〉）。
-- 探測本身只 live 查、零寫檔（不落 `.audit`、不寫 profile），維持無狀態。
+- 探測本身只 live 查、不新寫任何狀態檔（不落 `.audit`、不寫 profile），維持無狀態。唯一的「動檔」是項 9 清掉**上一輪 crash 殘留**的 `screen-mender-lane*` worktree 與 `.screen-mender/claims|locks`——這是回收前輪殘骸、非建立本輪狀態，不違反無狀態。

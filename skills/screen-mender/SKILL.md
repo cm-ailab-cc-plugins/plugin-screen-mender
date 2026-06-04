@@ -170,6 +170,8 @@ Reference: orchestration.md §3–4
 - capture 保真度旗標（須在報告標明，不可靜默）：
   - 字型保真度降級：自訂字型未註冊、fallback 到系統字型 → 系統字型通常較寬（偏保守），會遮蔽字型專屬的爆框 → 標 `font-fidelity-degraded`。
   - representative／非 live 渲染：以重建的代表性 chrome（非 live 控制器）出圖 → 忠於 SSOT 但屬合成 → 標 `representative-render`，避免被當作 live 行為背書。
+  - 非確定性 capture：內容隨機（`.shuffled()`／無 seed）、async 狀態、字型間歇 fallback 會讓 before/after 因與修復無關的原因不同。**同 state 連拍兩張比對**，不一致 → seed 固定它，seed 不了則標 `capture-nondeterministic`（類 locked、不出 before/after）。見 [`issue-schemas`](references/issue-schemas.md) §3.5。
+  - locale 未完整套用：harness 只換 app 字串、沒換 `Locale.current`／`Calendar.current`／asset `preferredLocalizations` → 日期/數字/週幾/在地化圖仍顯模擬器語系 → 標 `locale-unverifiable`，相關缺陷轉人工/真機，不得當 false-positive（§3.5）。
 - 通過 → 截圖落 ephemeral run 目錄，進 Phase 3。
 - 渲染不出（需 production seam）→ 標 locked；一渲染就 crash → 標 defect。兩者都在 final summary 列入 backlog 回報使用者（不寫 .audit 檔）、回 Phase 1 取下一個。
 - retry 上限後仍 fail（暫時性）→ 記入 summary、回 Phase 1。
@@ -225,6 +227,7 @@ screen-mender 自當此畫面的 mini-orchestrator（沿用 [`orchestration`](re
 7. **判定 + 畫面狀態** — reviewer PASS + verifier（AC + 視覺等價 + 無 regression）PASS → `<mr_tool> mr update <id> --ready`（`dry_run` → 不轉 ready，僅在 `proposed-mr.md` 標 `would-be-ready`）。
    - verifier PASS 的語意 = 「被修的那幾條 AC 達成且視覺正確／等價」，不等於「整個畫面乾淨」。畫面狀態另算（下條）。
    - 畫面狀態 = 由「所有 kept+deferred 缺陷是否都已解決」計，不是「我選去修的那幾條是否過 verify」：`fully-fixed`（全解決）／`partially-fixed (n fixed, m deferred-visible)`（有 deferred 或 after 圖仍見殘留）／`clean`（audit 0 條）。
+   - 誠實鐵則：after 圖只要還看得到缺陷，畫面就**不是 fully-fixed**，不論歸因（字型 fallback／Locale.current／洗牌）——降 partially-fixed＋殘留可見，或標 capture 不可信。修復正確性無法在 after 圖呈現者（改 native API 但 sim 仍顯舊值、before/after byte-identical）標 `code-verified／snapshot-unverifiable`，不報 fully-fixed（見 [`issue-schemas`](references/issue-schemas.md) §3.5）。
 8. **通知使用者一句**（MR 標題用 [`issue-schemas`](references/issue-schemas.md) §4 固定模板 `自動跑版修復[（部分）]：<unified_id> - <原因摘要>`，下方對話通知遵同段狀態鐵則）：
    - 全解決：「畫面 `<unified_id>` 小 MR 已發（!x），修了 N 條視覺缺陷。」
    - 有殘留：「畫面 `<unified_id>` 部分修復（!x）：N 條已修並驗證；M 條已偵測缺陷 after 圖仍可見、延後（<deferred reason>）。」不得對殘留畫面單用「已修並驗證」。
@@ -238,7 +241,7 @@ screen-mender 自當此畫面的 mini-orchestrator（沿用 [`orchestration`](re
 - 呈現：口頭／對話呈現 + 寫一份到 ephemeral run 目錄；不留 .audit。
 - 內容：各畫面狀態（`fully-fixed`／`partially-fixed (n fixed, m deferred-visible)`／`clean`／locked／defect）+ MR 連結（`dry_run` → 改列 `<run_dir>/<unified_id>/proposed-mr.md` 路徑）。`partially-fixed` 要列殘留可見缺陷與原因（`needs-design`／`deferred-by-run-config`）。
 - 觀測（每畫面）：附一行 compact 耗時 `capture <a>s · audit <b>s · fix <c>s/<k> builds (<r> rounds) · verify <d>s`，並點出本 run 最慢階段與 build 次數最高的畫面（=最該優化處）；`trace=true` → 改出完整逐階段 breakdown（見 [`orchestration`](references/orchestration.md) §7）。
-- capture 保真度旗標：列出本 run 有 `font-fidelity-degraded`／`representative-render` 的畫面（這類「乾淨」可能是保真度降級造成的假陰性）。
+- capture 保真度旗標：列出本 run 有 `font-fidelity-degraded`／`representative-render`／`capture-nondeterministic`／`locale-unverifiable` 的畫面（這類「乾淨」或「已修」可能是 capture 不忠於真機造成的假象；`locale-unverifiable` 另列「需真機抽驗」清單）。
 - run-config 揭露：明示本 run 的 `string_fix_policy` 與 `dry_run`；若 `string_fix_policy` 關閉了「縮文案」這條修法，列出因此 `deferred-by-run-config` 的缺陷。`dry_run` 時明示「本 run 未開任何 MR，產物在 `<run_dir>`」。
 - 收尾：清掉所有 lane worktree + `claim_dir`；跑 [`scripts/ensure-devices.sh`](scripts/ensure-devices.sh) `--teardown --platform <P>` 關機所有自管 `test_phone_NN`（保留 profile 供下次重用、只動 pool 不碰其他裝置）；已 merge 的 branch 清除；ephemeral run 目錄刪除（`dry_run` 例外：run 目錄保留並回報路徑，見 orchestration §5.6）。
 

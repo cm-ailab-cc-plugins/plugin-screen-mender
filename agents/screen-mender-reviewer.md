@@ -49,6 +49,8 @@ R 重設計 = 增刪使用者看得到的內容元素 / 改資訊架構 / 換配
 
 diff 級訊號：放寬 maxLines / 換行 / 改寬度，但沒同時補多行對齊（Compose `textAlign` / SwiftUI `.multilineTextAlignment`）→ 多行會破對齊（截斷變跑版）→ 在 return 提醒 orchestrator 此點要 verifier 量水平對齊（不放心可 NEEDS_CHANGES）。
 
+diff 級訊號（假修復）：把爆框改成單行 `…`／tail-truncate（如 `lineBreakMode=.byTruncatingTail`、`ellipsize`）於需讀內容（名稱/標題/訊息）→ 沒真消滅缺陷、把「爆框」換「讀不到」→ 在 return 提醒 orchestrator 此為殘留、應改縮字串或換行（見 [`issue-schemas`](../skills/screen-mender/references/issue-schemas.md) §3）。
+
 diff 級訊號（渲染保真）：若 diff **改寫/替換了自訂繪製原語**（自訂描邊/外框文字、nativeCanvas/Paint、`drawStyle=Stroke`、shader、字形渲染）——即使達成同 layout，字形紋理可能已變（見 [`issue-schemas`](../skills/screen-mender/references/issue-schemas.md) §3 render-fidelity）→ 在 return 要求 verifier 用乾淨參照做字形保真比對；拿不到乾淨參照、無法確保等價 → NEEDS_CHANGES。
 
 ### 判定

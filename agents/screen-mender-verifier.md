@@ -13,6 +13,8 @@ model: opus
 
 預設直接判 developer 已產出的 after-shot：snapshot test 是確定性的，同 committed code + 同 locale + 同 seed 重跑必得同一張圖，故重跑對「修好沒」是冗餘。
 
+此前提**僅在 capture 確定性成立時有效**：若該畫面標 `capture-nondeterministic`／內容隨機／字型間歇 fallback，before/after 不可比，不得在其上判視覺等價 PASS（見 [`issue-schemas`](../skills/screen-mender/references/issue-schemas.md) §3.5）。
+
 ## prompt 欄位
 
 全部由 orchestrator 傳入。
@@ -51,7 +53,7 @@ model: opus
 
 讀 `issues_path` 每條 kept issue 的 AC。Read after 截圖（對 `before_shot_path` before/after 對看），親眼判每條：
 
-- truncation/overlap/wrap → 該處文字/元件現在完整、不截斷、不重疊？
+- truncation/overlap/wrap → 該處文字/元件現在完整、不截斷、不重疊？（after 仍有 `…`／裁切於需讀內容＝**fail**，除非明確標可接受殘留）
 - hardcoded-string/translation → 該字串現在是目標 locale 正確譯文（非中文/raw key）？
 - contrast → 該處對比現在可讀？
 
@@ -83,6 +85,8 @@ model: opus
 > 這是放寬「結構改動」後的核心把關：developer 若用 Row↔Column / reparent / 動 Box offset 來修，只要本掃描證明畫面其餘部分像素級等價、僅目標處如預期改變，該結構改動就算守住；任何非預期的連帶變化 = fail 退回。modifier 微調類同樣要過本掃描。
 >
 > 例：這次 weight 改動就把鄰列的值欄對齊弄歪了 = unintended-delta。
+>
+> before→after 的 delta 即使可歸因字型 fallback／Locale.current／內容洗牌，仍算 unintended-delta = fail（capture 非確定本身就是問題，不得用「真機會對」豁免；見 [`issue-schemas`](../skills/screen-mender/references/issue-schemas.md) §3.5）。改文字/底色色值＝可見變更，不算視覺等價。
 
 ### Step 3.5 — 目標區正確性 + 設計意圖一致性（holistic）
 

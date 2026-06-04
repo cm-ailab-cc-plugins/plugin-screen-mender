@@ -16,8 +16,9 @@ screen-mender 全程截圖驅動：
 
 - `truncation-risk` / `wrap-overflow` / `overlap`：文字截斷、換行爆框、元件重疊。
 - `hardcoded-string` / `translation-broken`：未走字串系統而顯示錯字，或譯文壞、顯示 raw key。
-- `locale-format`：千分位／日期／週幾格式錯。
-- `contrast`：對比不可讀（截圖看得見）。
+- `locale-format`：**明顯錯誤**的日期／週幾／數字格式（raw、壞）。不含「該不該加千分位／用哪種分隔符」這類風格選擇——那是設計決策（分隔符還會 sim≠真機），標 `deferred:needs-design`／systemic，不逐畫面硬加（過度修復＝改了非缺陷）。
+- `localized-image`：圖片內燒死的文字應隨 locale 切換卻沒切（目標語系變體缺＝真缺陷；變體在＝harness 假象、仍旗標；見 §3.5）。
+- `contrast`：對比不可讀（截圖看得見）。修法改文字／底色色值＝可見變更，**不可報「視覺等價」**；換色取自畫面既有色盤，觸品牌色傾向人工確認。
 
 ### 不修的類別
 
@@ -63,6 +64,7 @@ after 圖仍可見 → 列殘留可見、畫面降 `partially-fixed`。
 - `needs-design`：修法本身需設計來源／設計決策。
   - 無 Figma node 或設計依據，無法判斷「修成什麼樣才對」。
   - 與 `design-redesign-not-bug` 區分：後者根本不是 bug、是有人想重設計（wont-fix）；needs-design 確實是 bug、但修法需設計拍板（deferred）。
+  - 模糊判斷（`…` 是設計還是截斷／某區是否故意留空）：分不出就標 needs-design 並寫出疑問，不准默默判 clean 或默默修。
 - `deferred-by-run-config`：缺陷真實、修法已知可行，僅因本 run 設定被關閉而不執行。
   - 例：`string_fix_policy=disabled`，或字串非本地資源檔可改（該類字串如何處理由專案自身 rule 定，plugin 不內建）→ 改／縮字串這條路本 run 不可行（見 SKILL Phase 0 `string_fix_policy`）。
   - 與 `needs-design` 嚴格區分：needs-design 是「不知道怎麼修才對」；deferred-by-run-config 是「知道怎麼修、只是這個 run 不准修」。
@@ -125,6 +127,7 @@ T2 vs R 的判準（最關鍵）：問「修完截圖除了缺陷處，其餘看
 
 - 准改：字串值一律改本地資源檔（`values-<locale>/strings.xml`、`Localizable.strings` 等）。
 - 禁：永不 hardcode 字串。
+- 編輯／縮短／補空白後須確認結果在目標語言**正字法正確**（變音、大小寫、無重複字、`%@`/`%d` placeholder 對得上）。截圖看不到的文字錯靠配套 lint 補（doubled-word／placeholder-parity／拉丁語系誤用 CJK 標點），非視覺 audit 職責。
 
 > screen-mender 對字串只認兩種模式（`string_fix_policy`，見 SKILL Phase 0）：`local-resource`（改本地資源檔）或 `disabled`（不動字串）。保持 self-contained、零專案 lore。
 >
@@ -150,6 +153,7 @@ T2 vs R 的判準（最關鍵）：問「修完截圖除了缺陷處，其餘看
 判斷準則：
 
 - 若某順位只是把 overflow／折行從一處搬到另一處（沒真消滅，例：weight 互搬），就升級到更高順位，不要交出「換位置」的假修復。
+- **省略號／tail-truncate 不是修好的終點**：把爆框改成單行 `…` 只是把「爆框」換成「讀不到」，同屬「換位置」假修復。使用者需讀完的內容（名稱／標題／訊息）一律要完整可見——縮字串（順位 1）或換行（順位 2）。單行 `…` 只在「短尾、無資訊損失、且縮＋換都不可行」才允許，且須標殘留可見。名稱／標題預設**換行**（內容驅動列高），不靠 `…`；「共用 cell」是把列高做成自適應的理由，不是維持單行截斷的藉口。
 - 同類缺陷策略要一致：別在 A 畫面「長高保字級」、B 畫面「縮字」只因 B 較難長高——若版面無法乾淨吸收，正解是回到順位 1（縮文案）。
 
 ### 放寬換行 / maxLines / 寬度約束 → 必須同時接住多行對齊
@@ -158,6 +162,16 @@ T2 vs R 的判準（最關鍵）：問「修完截圖除了缺陷處，其餘看
 
 - 典型陷阱（Compose）：靠父 `horizontalAlignment` 置中的 wrap-content `Text`，放寬 maxLines 後第 2 行依 `Text` 自身 `textAlign`（預設 `Start`）靠左 → 須同時加 `textAlign = TextAlign.Center`（通常配 `Modifier.fillMaxWidth()`），對既有單行 consumer 視覺等價、多行才正確。SwiftUI 同理：frame `alignment` ≠ `.multilineTextAlignment`。
 - 此類修法的 AC 必含一條「該元素多行後維持原對齊／置中／視覺處理」（見 §4）；audit 偵測到「靠父層 alignment 置中、元素無自身 textAlign」結構時，主動把「一換行就破置中」列為風險寫進 AC。
+
+## 3.5 截圖可信度：snapshot ≠ 真機時，誠實標 unverifiable，不准當 false-positive
+
+screen-mender 全靠截圖偵測＋驗收，但截圖可能不忠於真機。以下三種情形一律當「未驗證」處理，不可一句「真機會對」打發（那是假設不是事實，會關掉真 bug）：
+
+- **非確定性 capture**：內容隨機（`.shuffled()`／無 seed）、async 狀態、自訂字型間歇 fallback → before/after 會因與修復無關的原因不同，視覺等價掃描失效。判定法：同 state 連拍兩張，不一致即非確定 → seed 固定它，或無 seam 就標 `capture-nondeterministic`（類 locked），**不得交出兩張不同畫面的 before/after，也不得在其上判 PASS**。
+- **locale 未完整套用**：capture harness 若只換 app 字串、沒換 `Locale.current`／`Calendar.current`（日期／數字／週幾）與 asset `preferredLocalizations`（在地化圖），則目標語系截圖裡這些仍顯示模擬器語系 → `locale-format` 與 `localized-image` 正確性 **unverifiable**，標旗標轉人工／真機抽驗，**不得**標 `wont-fix:false-positive`（缺目標變體的在地化圖就是真缺陷）。
+- **非目標語系文字出現**（如 vi run 出現 CJK）必三分：① hardcoded／錯字串＝真缺陷；② `Locale.current` formatter 假象＝unverifiable，旗標；③ 在地化圖顯示錯變體——查 asset catalog 有無目標變體：缺＝真 `deferred:needs-design`、在＝harness 假象但仍旗標。禁一律打 false-positive。
+
+誠實鐵則（跨上述全部）：**after 圖只要還看得到缺陷，畫面就不是 fully-fixed**，不論歸因（字型 fallback／Locale.current／洗牌）——至少 partially-fixed＋殘留可見，或標 capture 不可信。修復正確性無法在 after 圖呈現者（改用 native API 但 sim 仍顯舊值、before/after byte-identical）標 `code-verified／snapshot-unverifiable`，不得報 fully-fixed。
 
 ## 4. 紀錄去處：MR 是唯一 SSOT（零本地紀錄檔）
 

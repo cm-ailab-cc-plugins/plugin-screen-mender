@@ -115,6 +115,8 @@ modifier 只把 overflow/折行搬到別處 = 沒修好，必須升級。
 
 縮字串（`string_fix_policy` 允許時）優先於長高、優先於 modifier；字級縮放（autosize / `minimumScaleFactor`）是末位。
 
+**省略號 / tail-truncate 不是修好**——讀-content（名稱/標題/訊息）要完整可見（縮字串或換行），別交 `…` 假修復；名稱/標題預設換行（內容驅動列高），「共用 cell」是把列高做自適應的理由、不是維持單行截斷的藉口（§3）。
+
 每落到較低順位都要在 return 寫「為何不縮文案 / 為何不長高」。
 
 字級縮放比例 **< ~0.85** → 標 `legibility-degraded` + 比例（這是以可讀性換不爆框的退讓解）。
@@ -176,3 +178,4 @@ after_png: <screenshot_after_path>
 - 一定 build 過 + render 截圖證明「缺陷消失 + 其餘等價」才交；做不到就 STUCK，不硬交。
 - 拿不準某改動算 T2 修復還是 R 重設計 → 當作 R，不做，列入 `deferred[]`（reason `needs-design`）。
 - 「修法已知、只是被 `string_fix_policy`/run-config 關掉」→ 列入 `deferred[]`（reason `deferred-by-run-config`），別誤標 needs-design、別默默改用縮字級硬塞（誤標成 needs-design 會淡化「其實已知可修、只是被關掉」的事實——曾實際發生）。
+- capture 不忠於真機（非確定／locale 未套／字型 fallback）時別硬判已修：依 [`issue-schemas`](../skills/screen-mender/references/issue-schemas.md) §3.5 標 `code-verified／snapshot-unverifiable` 或殘留，不用「真機會對」打發；after 圖仍見缺陷一律不報 OK（降 PARTIAL）。

@@ -24,7 +24,7 @@
 - **T2** 結構改動可做但須證明：Row↔Column／reparent／增刪 wrapper-spacer／調 Box offset／改容器型別。
   - 回報寫明為何 T1 不夠 + 改了什麼結構。
   - **改寫自訂繪製原語**（描邊/外框文字、nativeCanvas/Paint、`drawStyle=Stroke`、shader、字形渲染）= high-fidelity-risk T2：layout 對 ≠ 像素對。
-    - 回報標 `render_reimplemented`，用乾淨參照（非壞掉的 before）證字形保真。
+    - 回報標 `render_reimplemented`；字形保真無法在 snapshot 上自證，交審查與驗證階段標 `fidelity-unverifiable`。
 - **R** 永遠禁：增刪使用者看得到的內容元素／改資訊架構／純美學重設計。
   - 判準「改完截圖除缺陷處其餘一樣嗎」。
   - 不確定就當 R，不做，列 `deferred[]`（reason `needs-design`）。

@@ -30,7 +30,7 @@
 | 2 | ❌ | 模擬器執行環境 | Android：`adb`＋`emulator`＋SDK 路徑可解析／iOS：`xcrun simctl` 可用 | 缺→硬缺（本機無法跑模擬器）；提示裝 Xcode／Android SDK |
 | 3 | ⚠️/❌ | 裝置自動準備 | 跑 [`scripts/ensure-devices.sh`](../scripts/ensure-devices.sh) `--platform <P> --count <lanes>`：查自管 `test_phone_NN` pool→不足自建（指定機型不可用退本機最新；Android 無 avdmanager 走複製現有 AVD）→開機→stdout 回報 ready serial/udid | 回報 M 台：`M≥1`→以 M 條 lane 續跑（`M<lanes` 標降級、不靜默縮水）；`M=0` 或 script 印硬缺→終止（附 script 給的「怎麼補」） |
 | 4 | ❌* | git host CLI 可用 | 取 remote host（見下〈git host 偵測〉）→ 對應 CLI（gitlab→`glab`／github→`gh`）已安裝且 `auth status` **涵蓋此 host** | host 判不出／對應 CLI 缺／該 host 未登入 → 硬缺。*`dry_run=true` 豁免（不開 MR）* |
-| 5 | ❌ | 相依 skill·agent | sibling skill `add-snapshot`/`screen-list`/`shot-audit` ＋ agent `screen-mender-runner`（及其 `agents/references/01..06-*.md` 階段檔）皆在 | 任一缺→硬缺終止（依賴缺失無法起動） |
+| 5 | ❌ | 相依 skill·agent | sibling skill `add-snapshot`/`screen-list`/`shot-audit` ＋ agent `screen-mender-runner`（及其 `agents/references/01..05-*.md` 階段檔）皆在 | 任一缺→硬缺終止（依賴缺失無法起動） |
 
 > **git host 偵測（self-hosted 也要對，勿只比 URL 字樣）**：
 > 1. 取 host：`git remote get-url origin` → 去 scheme/user，留 host（`ssh://git@H:port/…`／`git@H:path` → `H`）。

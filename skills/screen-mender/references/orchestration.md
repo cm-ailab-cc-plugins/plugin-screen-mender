@@ -46,7 +46,6 @@ orchestrator 不做 heartbeat 輪詢 / ScheduleWakeup watchdog。每畫面一個
 紀律：
 
 - `escalation` 四項：原因(stuck/audit-problem/...)、卡點、試過什麼、建議。
-- 不寫 `stuck.md` / heartbeat 檔。
 
 ## 3. 並行模型：N 條 lane（work-stealing）
 
@@ -84,7 +83,7 @@ for unified_id in manifest（優先挑與本 lane worktree 當前 branch 同 mod
 
 - 觸發點：orchestrator 每次被完成通知喚醒、或準備讓某 lane 收工前。
 - 動作：對照 `claim_dir` 既有 claim 與目前 live runner；有 claim 卻無對應 live runner = 漏派，立即補 spawn。
-- 這不是 watchdog（不定時主動喚醒、不寫 heartbeat），是事件驅動下的一致性對賬。
+- 這不是 watchdog（不定時主動喚醒），是事件驅動下的一致性對賬。
 
 ### 無跨-lane 裝置鎖
 
@@ -141,7 +140,7 @@ git -C <lane_worktree> checkout <base_branch> && git -C <lane_worktree> pull --f
 
 `mr_tool` 由 git remote 推得：gitlab→glab / github→gh。MR = 唯一 SSOT，零紀錄檔。
 
-> 新模型下本節由 **runner 的 mr 階段**執行（見 [`screen-mender-runner`](../../../agents/screen-mender-runner.md) 與 `agents/references/05-mr.md`），orchestrator 不直接碰 MR。下文「orchestrator／developer／reviewer／verifier」讀作 runner 的對應內部階段：mr／fix／審查驗證（review + verify 已併為單一「審查與驗證」階段）。
+> 新模型下本節由 **runner 的 mr 階段**執行（見 [`screen-mender-runner`](../../../agents/screen-mender-runner.md) 與 `agents/references/05-mr.md`），orchestrator 不直接碰 MR。
 
 ### §5.0 dry-run（試跑，不開 MR）
 
@@ -152,7 +151,7 @@ git -C <lane_worktree> checkout <base_branch> && git -C <lane_worktree> pull --f
   - `change.patch` = `git -C <worktree> format-patch <base_branch>..HEAD --stdout`。
   - `before.png` / `after.png`（複製 fix 階段的 before/after 截圖）。
   - `proposed-mr.md` = §5.3／[`issue-schemas`](../../../agents/references/issue-schemas.md) §4 的 MR description，但截圖引本地相對路徑（不 `POST /uploads`），轉 ready 與否改標 `would-be-ready`。
-- review 階段照跑，`diff_cmd` = `git -C <worktree> diff <base_branch>`；verify 階段照判 after-shot；內部 loop 照常。
+- 審查與驗證階段照跑（`diff_cmd` = `git -C <worktree> diff <base_branch>`、判 after-shot）；內部 loop 照常。
 - 冪等（§5.1）略過（無 MR 可查）；轉 ready（§5.4）略過。
 
 ### §5.1 冪等

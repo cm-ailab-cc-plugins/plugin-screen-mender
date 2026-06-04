@@ -2,15 +2,13 @@
 
 > screen-mender 自帶的問題檔 schema、triage 規則、修復安全約束，零專案 lore。
 > known-intended 清單屬專案專屬，由 host 專案自身 rule 提供（見 §2 triage）；無則跳過該項。
->
-> 角色詞對照（合併 agent 後）：下文「developer／reviewer／verifier」讀作 [`screen-mender-runner`](../screen-mender-runner.md) 的內部階段——developer = fix（`03-fix.md`）；reviewer + verifier 已併為單一「審查與驗證」階段（`04-verify.md`）。
 
 ## 1. 範圍：只修「截圖看得見」的視覺缺陷
 
 screen-mender 全程截圖驅動：
 
 - 偵測靠 shot-audit 的視覺分析。
-- 驗收靠 verifier 比對 after 截圖。
+- 驗收靠審查與驗證階段比對 after 截圖。
 
 所以只處理截圖上看得見的視覺缺陷。截圖看不見的問題不在範圍——既偵測不到也驗收不了，route 去專屬 a11y pass（例：缺 `accessibilityLabel` / `contentDescription`）。
 
@@ -88,11 +86,11 @@ fix 階段中途發現 deferred：
 
 1. 修好目標缺陷：issues.md kept 的那條視覺缺陷消失。
 2. 畫面其餘部分視覺等價：除了目標缺陷處，截圖其餘部分對 before 看起來一樣。
-   - 由誰證：verifier Step 3 同畫面視覺等價掃描。
+   - 由誰證：審查與驗證階段 Step 3 同畫面視覺等價掃描。
 3. 不是重設計：沒有改變使用者看到的內容／資訊架構／視覺語言。
-   - 由誰判：reviewer。
+   - 由誰判：審查與驗證階段。
 
-> 守結果、不禁工具：不要禁特定手段（例：禁 Row↔Column / 禁改容器）——工具自由，由上面三條件 + verifier/reviewer 把關。
+> 守結果、不禁工具：不要禁特定手段（例：禁 Row↔Column / 禁改容器）——工具自由，由上面三條件 + 審查與驗證階段把關。
 >
 > 反例警示：
 > - 「用 modifier 互搬把 overflow 從右邊搬到左邊」沒讓缺陷真正消失（只是位移），不算修好。
@@ -103,12 +101,12 @@ fix 階段中途發現 deferred：
 **T1 自由（綠燈）**
 
 - 手段：modifier 微調（lineLimit／maxLines／autosize／weight／padding／spacing／softWrap／safe-area／contentInset）、調色值、同容器 sibling modifier、字串值改動／縮短字串值（改本地資源檔，見下）。
-- 准許條件：直接做；仍須過 verifier 三條件。
+- 准許條件：直接做；仍須過審查與驗證階段三條件。
 
 **T2 結構改動（需證明）**
 
 - 手段：Row↔Column、reparent、增刪 wrapper/spacer、調整 Box offset 堆疊、改容器型別。
-- 准許條件：允許，但 developer 須在 return 標 `tier: T2` + 填 `structural_notes`（為何 T1 解不了／改了什麼結構）；verifier 視覺等價掃描證等價；reviewer 確認非重設計。
+- 准許條件：允許，但 fix 階段須在 return 標 `tier: T2` + 填 `structural_notes`（為何 T1 解不了／改了什麼結構）；審查與驗證階段以視覺等價掃描證等價、並確認非重設計。
 
 **R 始終禁（紅燈）**
 
@@ -132,9 +130,8 @@ T2 vs R 的判準（最關鍵）：問「修完截圖除了缺陷處，其餘看
 
 - 優先最小改動保留原渲染：能在原元件上加寬度約束／換行而不換渲染技術，就別重寫。
 - 若版面修復非重寫渲染不可（原本絕對座標、本就不能換行）→ 視為 **high-fidelity-risk T2**：
-  - developer 在 return 標 `render_reimplemented: <改了什麼渲染>`，觸發 reviewer／verifier 加驗。
-  - 須用**乾淨參照**證明字形保真（逐字比對筆畫／外框／變音符號），不得拿壞掉的 before（截斷／爆框）當保真基準——它只能證明「不再截斷」、證不了「字沒變樣」。乾淨參照來源：同元件其他短語系（如 zh）的 render、既有乾淨截圖、或設計稿。
-  - 拿不到乾淨參照 → verifier 標 `fidelity-unverifiable`、不得逕判視覺等價 PASS。
+  - fix 階段在 return 標 `render_reimplemented: <改了什麼渲染>`，觸發審查與驗證階段加驗。
+  - 但 snapshot 上無乾淨參照可逐字比對字形保真（壞掉的 before 只證「不再截斷」、證不了「字沒變樣」）→ 審查與驗證階段一律標 `fidelity-unverifiable`、不得逕判視覺等價 PASS（轉人工/真機抽驗）。
 
 ### 字串值改動（通用，不含任何專案策略）
 
@@ -156,7 +153,7 @@ T2 vs R 的判準（最關鍵）：問「修完截圖除了缺陷處，其餘看
 
 對 overflow / truncation / wrap：
 
-- developer（audit 的修法 hint 可建議）不再被分類綁死只能 modifier。
+- fix 階段（audit 的修法 hint 可建議）不再被分類綁死只能 modifier。
 - 應在真 render 上依下列優先序挑「視覺結果最乾淨」的。
 - 在 return 逐一說明為何跳過更高順位（為何不縮文案、為何不長高／放寬容器）才落到下一順位。
 
@@ -167,7 +164,7 @@ T2 vs R 的判準（最關鍵）：問「修完截圖除了缺陷處，其餘看
 2. 長高 / 放寬容器吸收（T1 padding/intrinsic 或 T2 結構，視情況）。
 3. T1 modifier（softWrap / lineLimit / weight…）。
 4. 字級縮放（autosize / `minimumScaleFactor`）= 末位手段：把字縮小硬塞、以可讀性換不爆框，只有 1–3 都不可行才用。
-   - legibility 門檻：縮放比例 < ~0.85（肉眼可辨變小、或明顯小於相鄰同級元素）→ developer 須在 return 標 `legibility-degraded` + 比例；verifier 須量並回報；orchestrator 須在 MR/summary 明示「此為退讓解，最優解（縮文案／長高）因 <原因> 未採」。
+   - legibility 門檻：縮放比例 < ~0.85（肉眼可辨變小、或明顯小於相鄰同級元素）→ fix 階段須在 return 標 `legibility-degraded` + 比例；審查與驗證階段須量並回報；orchestrator 須在 MR/summary 明示「此為退讓解，最優解（縮文案／長高）因 <原因> 未採」。
 
 判斷準則：
 
@@ -212,16 +209,16 @@ screen-mender 全靠截圖偵測＋驗收，但截圖可能不忠於真機。
 唯一暫存輸入 = `issues.md`，放 ephemeral run 目錄（run 結束即刪，不進 `.audit` 持久區）。
 
 - 由誰產：audit 階段 agent（shot-audit 偵測 + screen-mender 同階段補 triage + 附 AC）。
-- 由誰讀：developer 直接讀。
+- 由誰讀：fix 階段直接讀。
 
 ```markdown
 ## [<severity:high|med|low>] <category> · <title>
-- triage：kept | deferred:<needs-design|deferred-by-run-config> | wont-fix:<reason vocab>   # kept 進 developer；deferred=真缺陷本 run 不修→殘留可見段；wont-fix→「考慮過但不修」段
+- triage：kept | deferred:<needs-design|deferred-by-run-config> | wont-fix:<reason vocab>   # kept 進 fix 階段；deferred=真缺陷本 run 不修→殘留可見段；wont-fix→「考慮過但不修」段
 - 觀察 (<date>)：<描述 + code path:line>
 - 位置：[<file>](<path:line>)
 - 截圖：`shots/<platform>__<state>__<locale>.png`
 - 修法 hint：<...>（標 tier T1/T2；縮字串屬 T1；overflow 別只開 T1、依 §3 優先序）
-- AC：<一行可驗，verifier 逐條比對，例「vi 下標題完整不截斷」>
+- AC：<一行可驗，審查與驗證階段逐條比對，例「vi 下標題完整不截斷」>
   - **換行/放寬 maxLines/改寬度類修法的 AC 必含對齊條款**（如「標題多行後仍與 body/button 同樣置中」，見 §3）。
 ```
 
@@ -243,7 +240,7 @@ screen-mender 全靠截圖偵測＋驗收，但截圖可能不忠於真機。
 
 - `<unified_id>`：畫面統一 id（= branch 用的同一個；單平台直接用，monorepo 跨平台才帶平台前綴）。
 - `<原因摘要>`：一句話講主要缺陷；多缺陷取最主要者 + 「等 N 處」（例：`暱稱欄位截斷等 3 處`）。
-- 「自動」前綴：標示本 MR 為 screen-mender 自動產生，reviewer 一眼可識。
+- 「自動」前綴：標示本 MR 為 screen-mender 自動產生，人工 PR 把關者一眼可識。
 
 範例：
 

@@ -17,7 +17,7 @@
 - diff：`git -C <worktree> diff <base_branch>`（`dry_run` 也用這個；非 dry-run 已開 MR 後可改 `<mr_tool> mr diff <id>`）——Step 0 用。
 - `issues.md` kept（含每條 AC，ground truth；只該改這些）。
 - after 截圖（stage 3）+ before 截圖（stage 1，Step 3 視覺等價掃描必需）。
-- `neighborhood_test_cmds`（選用）/ `fidelity_reference`（`render_reimplemented` 時用，乾淨參照）。
+- `neighborhood_test_cmds`（選用）。
 
 ## Step 0 — 審 diff（scope + redesign）
 - 先機械審這次修復的 diff，**不審程式美不美／命名／可否更簡潔**。
@@ -39,7 +39,7 @@
 - diff 級訊號：
   - 放寬 maxLines／換行／改寬度但沒同時補多行對齊（Compose `textAlign` / SwiftUI `.multilineTextAlignment`）→ 多行會破對齊（截斷變跑版）→ 標記要 Step 3 量水平對齊；不放心直接 `NEEDS_CHANGES` 回 fix。
   - 把爆框改成單行 `…`／tail-truncate（`lineBreakMode=.byTruncatingTail`、`ellipsize`）於需讀內容（名稱／標題／訊息）→ 沒真消滅缺陷、把「爆框」換「讀不到」→ `NEEDS_CHANGES` 回 fix（改縮字串或換行）。
-  - 改寫／替換自訂繪製原語（`render_reimplemented`：自訂描邊/外框、nativeCanvas/Paint、`drawStyle=Stroke`、shader、字形渲染）→ 即使 layout 同，字形紋理可能已變 → 要求 Step 3.5 用乾淨參照做字形保真；拿不到乾淨參照、無法確保等價 → `NEEDS_CHANGES`。
+  - 改寫／替換自訂繪製原語（`render_reimplemented`：自訂描邊/外框、nativeCanvas/Paint、`drawStyle=Stroke`、shader、字形渲染）→ 即使 layout 同，字形紋理可能已變 → snapshot 無法自證字形保真 → 標 `fidelity-unverifiable`，不得逕判視覺等價 PASS（轉人工/真機）。
 
 > 寧可 `NEEDS_CHANGES` 也不放過越界／重設計。
 > kept issue 本身有問題（根本非視覺缺陷／AC 自相矛盾／該 triage 掉卻 kept）→ `AUDIT_PROBLEM`，交 driver escalation 上報使用者。
@@ -74,7 +74,7 @@
 對每個 target-fix 區再問「設計師看了會收嗎」：
 - 對齊一致性：與同容器兄弟元素一致嗎？（body/button 置中、標題卻靠左 = fail）
 - 視覺處理一致性：字重／顏色／大小／平衡一致、符合設計意圖嗎？
-- **渲染紋理保真**（dev 標 `render_reimplemented` 時**必查**）：被改文字／自訂繪製的字形渲染有沒有變樣——筆畫粗細、描邊觀感、(尤其非拉丁) 變音／聲調符號清晰度、有沒有糊化。before 壞了（截斷／爆框）不得當字形基準——只證「不再截斷」、證不了「字沒變樣」；改用 `fidelity_reference` 逐字比對。拿不到 → 標 `fidelity-unverifiable`，**不得逕判視覺等價 PASS**。
+- **渲染紋理保真**（dev 標 `render_reimplemented` 時**必查**）：被改文字／自訂繪製的字形渲染有沒有變樣——筆畫粗細、描邊觀感、(尤其非拉丁) 變音／聲調符號清晰度、有沒有糊化。before 壞了（截斷／爆框）不得當字形基準——只證「不再截斷」、證不了「字沒變樣」。snapshot 無乾淨參照可逐字比對 → 一律標 `fidelity-unverifiable`，**不得逕判視覺等價 PASS**（轉人工/真機抽驗）。
 - legibility：用了字級縮放 → 量比例，< ~0.85 標 `legibility-degraded`、回報「此為退讓解」。
 
 任一不一致 = `fail`，寫量化證據（座標／比例）退回 stage 3。

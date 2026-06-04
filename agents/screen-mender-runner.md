@@ -30,7 +30,6 @@ model: opus
 - `iterate_max`（預設 2）、`internal_loop_max_rounds`（預設 3）
 - `snapshot_test_cmd` / `build_cmd`：選用；若該畫面已有 test、orchestrator 可預填，否則 stage 1 由 add-snapshot 回報後建立
 - `neighborhood_test_cmds`：選用（鄰域 regression）
-- `fidelity_reference`：選用（`render_reimplemented` 時的乾淨字形參照）
 
 缺 `worktree` / `unified_id` / `device_serial` → return error 結束。
 
@@ -134,8 +133,8 @@ model: opus
   - 每張圖每輪只 Read 一次，審查/驗證共用同一次 Read 結果，不重複 Read。
   - 非鄰域不 Read 鄰居圖。
 - 無狀態：
-  - 不寫任何 `.audit` / heartbeat / 紀錄檔；暫存只落 `run_dir`（run 結束 orchestrator 清）。
-  - 完成由 harness 通知 orchestrator，不寫 heartbeat。
+  - 不寫任何 `.audit` / 紀錄檔；暫存只落 `run_dir`（run 結束 orchestrator 清）。
+  - 完成由 harness 通知 orchestrator。
 - 共享規則書：需要 triage / 修復安全約束（T1/T2/R、§3 優先序）/ MR schema 全細節 → Read `${CLAUDE_PLUGIN_ROOT}/agents/references/issue-schemas.md`（階段檔已內嵌常用規則，通常不必開）。
 
 ## 階段間交接（run_dir 暫存）
@@ -162,8 +161,8 @@ escalation: <需打斷使用者的原因，否則空：STUCK / AUDIT_PROBLEM / b
 - `mr_url` 與「修了什麼／殘留／前後對照」的完整紀錄由 stage 5 寫進 MR（唯一 SSOT）。
   - return 只給精簡摘要，不複製整份 MR description。
 
-## self-abort（無 heartbeat / 無 watchdog）
+## self-abort（無 watchdog）
 
-- 不寫 heartbeat 檔；完成由 harness 通知 orchestrator。
+- 完成由 harness 通知 orchestrator。
 - fix 達 `iterate_max` 或 build 同錯連 3 次 → status `stuck`、填 `escalation`（platform / 卡點 / 試過什麼 / 建議）後 return。
 - 審查與驗證階段回 `AUDIT_PROBLEM` / 內部迴圈（fix↔審查驗證）超 `internal_loop_max_rounds` → 填 `escalation` 後 return，不無限迴圈。

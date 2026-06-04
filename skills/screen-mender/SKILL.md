@@ -53,7 +53,7 @@ description: >-
 
 - 只做配 lane／認領／**每畫面派一個 runner**／收 summary／發通知；
 - capture／改 code／build／test／截圖／開 MR 全在背景 runner（`run_in_background`）內，orchestrator **不碰截圖·issues·diff·build log**
-- 完成由 harness 通知驅動，不做 ScheduleWakeup 輪詢、不寫 heartbeat 檔
+- 完成由 harness 通知驅動，不做 ScheduleWakeup 輪詢
 - runner 端只保留 self-abort（達迭代上限／build 連錯 3 次 → return stuck）
 - 互動觸發、使用者在線即 backstop。細節見 orchestration.md §1–2。
 
@@ -236,7 +236,6 @@ orchestrator 已知值轉傳，runner 不讀設定檔
 - `ui_framework_pref`（自動偵測 compose|swiftui）、`iterate_max`（2）、`internal_loop_max_rounds`（3）
 - `snapshot_test_cmd` / `build_cmd`（已知則預填，否則 runner 於 capture 經 add-snapshot 取得）
 - `neighborhood_test_cmds`（`neighborhood_regression=true` 時帶：與本 `unified_id` 同 module／feature、且 base 已有 snapshot test 的鄰域畫面測試指令；無鄰域 → 不帶）
-- `fidelity_reference`（選用：同元件乾淨語系 render／既有乾淨截圖，供 verify 字形保真比對）
 
 **收到 runner summary 後**（依 `status`，狀態鐵則見 [`runner 回傳契約`](../../agents/screen-mender-runner.md)）：
 

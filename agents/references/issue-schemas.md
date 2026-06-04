@@ -3,6 +3,89 @@
 > screen-mender 自帶的問題檔 schema、triage 規則、修復安全約束，零專案 lore。
 > known-intended 清單屬專案專屬，由 host 專案自身 rule 提供（見 §2 triage）；無則跳過該項。
 
+## 0. 標示對照表（legend）
+
+> 下列 token 是給 agent 用的**受控字彙（enum）**，不是給人讀的描述：①逼 agent 從閉集選一個、②下游邏輯靠它 deterministically 分流（如 `deferred:*`→殘留可見段、`tier:T2`→觸發加驗、status→決定 MR 標題）、③是 audit→fix→verify→MR 跨階段對齊的 join key。後文裸用任一 token 時回查本表即可。
+
+**triage 歸屬**（§2，每條 issue 標剛好一種）
+
+| token | 中文 |
+|---|---|
+| `kept` | 本 run 要修的真視覺缺陷 |
+| `deferred:<reason>` | 真缺陷、本 run 不修；after 圖仍可見 → 殘留可見、畫面降 partially-fixed |
+| `wont-fix:<reason>` | 非本 pass 該解的視覺缺陷，不計入畫面乾淨度 |
+
+**deferred 原因**（§2）
+
+| token | 中文 |
+|---|---|
+| `needs-design` | 是 bug，但「修成什麼樣才對」需設計來源/拍板 |
+| `deferred-by-run-config` | 已知怎麼修，只是被本 run 設定（如 `string_fix_policy=disabled`）關掉 |
+
+**wont-fix 原因 vocab**（§2，必填其一）
+
+| token | 中文 |
+|---|---|
+| `false-positive` | OCR/視覺誤判，code 其實正確 |
+| `intended-behavior` | 專案 known-intended（清單由 host 專案提供） |
+| `platform-native` | 平台慣例差異（如標題置中 vs 靠左），非 bug |
+| `non-visual` | 問題真實但截圖看不見 → route 專屬 a11y pass |
+| `out-of-scope` | 真實存在但不是視覺缺陷（行為 bug / code nit / 需功能 PR） |
+| `design-redesign-not-bug` | 有人想重設計，根本不是 bug |
+| `cost-benefit-low` | 真缺陷但極輕微（如 1px），修復風險/成本 > 收益 |
+| `subsumed-by-other-issue` | 與另一條 kept 同根因，修那條即連帶解 |
+| `user-confirmed` | 使用者明確表示此項不修 |
+
+**缺陷類別 `<category>`**（§1，描述用）
+
+| token | 中文 |
+|---|---|
+| `truncation-risk` | 文字截斷 |
+| `wrap-overflow` | 換行爆框 |
+| `overlap` | 元件重疊 |
+| `hardcoded-string` | 未走字串系統而顯示錯字 |
+| `translation-broken` | 譯文壞、顯示 raw key |
+| `locale-format` | 明顯錯誤的日期/週幾/數字格式 |
+| `localized-image` | 圖片內燒死的文字應隨 locale 切卻沒切 |
+| `contrast` | 對比不可讀（截圖看得見） |
+| `a11y-missing` | 缺 label/contentDescription（不修，route a11y） |
+| `design-redesign` | 「應改成 Column / 加 caption」類（不修，除非帶設計證據） |
+
+**修法分級**（§3）
+
+| token | 中文 |
+|---|---|
+| `T1` | 自由（綠燈）：modifier 微調/調色值/縮字串值 |
+| `T2` | 結構改動（需證明）：Row↔Column/reparent/改容器型別，須標 `structural_notes` |
+| `R` | 始終禁（紅燈）：增刪可見內容/改語意/純美學重設計，需設計證據否則 wont-fix |
+
+**渲染保真**（§3）
+
+| token | 中文 |
+|---|---|
+| `render-fidelity` / `high-fidelity-risk T2` | 改寫自訂繪製原語：達成同 layout ≠ 產生同像素 |
+| `render_reimplemented` | fix 階段 return 標「改了什麼渲染」，觸發加驗 |
+| `fidelity-unverifiable` | 無乾淨參照逐字比對字形 → 不得逕判視覺等價 PASS |
+| `legibility-degraded` | 字級縮放退讓解（比例 < ~0.85），須標比例 |
+
+**capture 可信度旗標**（§3.5）
+
+| token | 中文 |
+|---|---|
+| `capture-nondeterministic` | 內容隨機/async/字型間歇 fallback，before/after 不可比 |
+| `locale-unverifiable` | harness 只換字串沒換 `Locale.current`/asset，locale 正確性未驗證 |
+| `font-fidelity-degraded` | 自訂字型未註冊、fallback 到系統字型 |
+| `representative-render` | 以重建 chrome 出圖（非 live 控制器） |
+| `code-verified／snapshot-unverifiable` | 修對了但 sim 仍顯舊值/before-after byte-identical |
+
+**畫面狀態**（§4；runner 完整 status enum 見 [`screen-mender-runner`](../screen-mender-runner.md)）
+
+| token | 中文 |
+|---|---|
+| `fully-fixed` | 所有 kept+deferred 缺陷都已解決 |
+| `partially-fixed` | 部分修復，尚有殘留可見缺陷（n 修 / m 延後可見） |
+| `clean` | audit 0 條，無缺陷可修 |
+
 ## 1. 範圍：只修「截圖看得見」的視覺缺陷
 
 screen-mender 全程截圖驅動：

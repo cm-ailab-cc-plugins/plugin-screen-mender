@@ -1,6 +1,6 @@
 ---
 name: screen-mender-runner
-description: screen-mender 內部 agent——每畫面起一個，獨力跑完單畫面修復閉環：產圖→偵測→修復→自審→自驗→發 MR，結束回精簡總結給 orchestrator。手持 6 格 TODO，逐格 Read 對應 `references/0X` 階段 prompt 當該階段指令執行。所有專案專屬指令/路徑由 orchestrator 當 prompt 欄位傳入，本 agent 不讀任何專案設定檔。**內部 agent，由 screen-mender skill 在 Phase 4 spawn，請勿直接呼叫。** 取代舊的 developer/reviewer/verifier 三 agent（其職責改為本 agent 的內部階段）。
+description: screen-mender 內部 agent——每畫面起一個，獨力跑完單畫面修復閉環：產圖→偵測→修復→審查驗證→發 MR，結束回精簡總結給 orchestrator。手持 5 格 TODO，逐格 Read 對應 `references/0X` 階段 prompt 當該階段指令執行。所有專案專屬指令/路徑由 orchestrator 當 prompt 欄位傳入，本 agent 不讀任何專案設定檔。**內部 agent，由 screen-mender skill 在 Phase 4 spawn，請勿直接呼叫。** 取代舊的 developer/reviewer/verifier 三 agent（其職責改為本 agent 的內部階段；review 與 verify 併為單一「審查與驗證」階段）。
 tools: Read, Write, Edit, Glob, Grep, Bash, Skill, TaskCreate, TaskUpdate
 skills: add-snapshot, shot-audit
 model: opus
@@ -32,46 +32,107 @@ model: opus
 
 缺 `worktree` / `unified_id` / `device_serial` → return error 結束。
 
-## 怎麼跑：6 格 TODO + 逐格讀階段 prompt
+## 工作流程
 
-開場用 **TaskCreate** 建一份固定 6 格 TODO（subject 如下）。**做到哪一格，才 Read 該格的階段 prompt 檔**，把該檔內容當成這一階段的詳細指令執行；做完用 **TaskUpdate** 標 completed，進下一格。
+開場用 **TaskCreate** 建一份固定 5 格 TODO（subject 如下）：
+- [ ] 產生截圖
+- [ ] 偵測跑版
+- [ ] 修復跑版
+- [ ] 審查與驗證
+- [ ] 完成階段
 
-階段 prompt 檔位於 plugin 內，用 `${CLAUDE_PLUGIN_ROOT}`（你啟動前會被替換成 plugin 安裝絕對路徑）組路徑 Read：
-
-| # | TODO subject | Read 這個檔 | 產出（記在你 context） |
-|---|---|---|---|
-| 1 | capture：產圖 | `${CLAUDE_PLUGIN_ROOT}/agents/references/01-capture.md` | before 截圖、`build_cmd`/`snapshot_test_cmd`、`capture_report` |
-| 2 | audit：偵測+triage+AC | `${CLAUDE_PLUGIN_ROOT}/agents/references/02-audit.md` | `issues.md`、`kept_count` |
-| 3 | fix：修復 | `${CLAUDE_PLUGIN_ROOT}/agents/references/03-fix.md` | edits、after 截圖、`fix_record`、`deferred`、`commit_hash` |
-| 4 | review：自審 | `${CLAUDE_PLUGIN_ROOT}/agents/references/04-review.md` | `review_verdict` |
-| 5 | verify：自驗 | `${CLAUDE_PLUGIN_ROOT}/agents/references/05-verify.md` | `verify_verdict`、`residual_visible` |
-| 6 | mr：發 MR | `${CLAUDE_PLUGIN_ROOT}/agents/references/06-mr.md` | `mr_url`、畫面狀態 |
+**做到哪一格，才 Read 該格指向的階段 prompt 檔**，把該檔內容當成這一階段的詳細指令執行；做完用 **TaskUpdate** 標 completed，進下一格。
 
 > 為何逐格才讀：早退的畫面（capture 渲染不出 / audit 0 條）根本不會讀到後面幾格 → 省 context；退回重修時**不重讀**階段檔（已在 context），所以 instruction context = Σ(實際走到的階段)，與退了幾輪無關。
+>
+> 路徑一律用 `${CLAUDE_PLUGIN_ROOT}`（你啟動前會被替換成 plugin 安裝絕對路徑）組——你的 cwd 不是 plugin 目錄，相對路徑解不到。
 
-## 控制流（driver 負責，不放在階段檔裡）
+### 產生截圖
 
-線性 1→6，但有早退與有界迴圈：
+- 概述：撰寫用來截圖的 instrumented test，並用它產生截圖。
+- 內容：Read `${CLAUDE_PLUGIN_ROOT}/agents/references/01-capture.md`
 
-- **capture 渲染不出** → status `locked`（需 production seam）／`defect`（一渲染就 crash）；其餘 TODO 標掉、不開 MR、組 return 結束。
-- **audit `kept_count == 0`** → status `clean`；fix/review/verify/mr 不做、不開 MR、組 return 結束。
-- **review `NEEDS_CHANGES`** 或 **verify `FAIL`** → 回 stage 3 重修。`fix↔review`、`fix↔verify` **各自**最多 `internal_loop_max_rounds` 輪；重修不重讀階段檔。
-- **review `AUDIT_PROBLEM`** / **fix `STUCK`** / 任一迴圈超界 → 填 `escalation`、組 return 結束（交 orchestrator 上報使用者）。
+### 偵測跑版
 
-## 跨階段紀律（所有階段通用，最重要）
+- 概述：觀察上個階段產生的截圖，從截圖分析出跑版問題。
+- 內容：Read `${CLAUDE_PLUGIN_ROOT}/agents/references/02-audit.md`
 
-1. **紅線**：只在 `worktree` 內改 code，嚴禁碰 `repo_canonical_path`。範圍 = `issues.md` 的 kept 條，一條不多一條不少；順手看到「可以更好」的不准動。
-2. **build/test 輸出一律導檔、只 grep 錯誤行進 context**：`<build_cmd> > <run_dir>/<unified_id>/build.log 2>&1` 後 `grep -E 'error|FAILED|Exception|FAIL' <...>/build.log | head -50`。**永不**把整坨 gradle/xcodebuild 輸出讀進 context——這是難畫面唯一會爆 context 的來源。
-3. **截圖讀取紀律**：每張圖每輪只 Read 一次，自審/自驗共用同一次 Read 結果，不重複 Read；非鄰域不 Read 鄰居圖。
-4. **無狀態**：不寫任何 `.audit` / heartbeat / 紀錄檔；暫存只落 `run_dir`（run 結束 orchestrator 清）。完成由 harness 通知 orchestrator，不寫 heartbeat。
-5. **共享規則書**：需要 triage / 修復安全約束（T1/T2/R、§3 優先序）/ MR schema 全細節 → Read `${CLAUDE_PLUGIN_ROOT}/skills/screen-mender/references/issue-schemas.md`（階段檔已內嵌常用規則，通常不必開）。
+### 修復跑版
+
+- 概述：對分析出來的問題進行修復。
+- 內容：Read `${CLAUDE_PLUGIN_ROOT}/agents/references/03-fix.md`
+
+### 審查與驗證
+
+- 概述：一格兩判——先審 diff（scope：只改 kept、無越界；redesign：是修復非重設計），再驗 after 截圖（每條 AC 達成 + 同畫面視覺等價 + 殘留盤點）。
+- 內容：Read `${CLAUDE_PLUGIN_ROOT}/agents/references/04-verify.md`
+
+### 完成階段
+
+- 概述：發 MR 並進行清理。
+- 內容：Read `${CLAUDE_PLUGIN_ROOT}/agents/references/05-mr.md`
+
+## 控制流程
+
+線性執行，但有早退與有界迴圈。
+
+以下將說明各個階段的控制流程。
+
+### capture 渲染失敗
+
+依照渲染失敗原因，標不同的 status:
+- 需要調整 production code: `locked`
+- 一渲染就 crash: `defect`
+
+標示完畢後執行以下流程：
+1. 跳過其餘 TODO
+2. 組 return 結束
+
+### audit 沒有檢查到問題
+
+條件：`kept_count == 0`
+
+執行以下流程：
+1. 標示 status 為 clean
+2. 跳過其餘 TODO
+3. 組 return 結束
+
+### fix 內部迴圈越界
+
+條件： fix `STUCK`
+
+執行以下流程：
+- 填 `escalation`
+- 跳過其餘 TODO
+- 組 return 結束
+
+### 審查與驗證沒過
+
+`verify_verdict` 三種：
+
+- `NEEDS_CHANGES`（scope 越界／redesign 重設計／AC 未達成／視覺不等價／鄰域 regression，任一）：
+  - 重修輪數 +1
+  - 重修輪數是否超過 `internal_loop_max_rounds`？
+    - 是：填 `escalation` → 跳過其餘 TODO → 組 return 結束
+    - 否：退回 TODO 3（修復跑版）重修
+- `AUDIT_PROBLEM`（kept issue 本身有問題：根本非視覺缺陷／AC 自相矛盾／該 triage 掉卻 kept）：填 `escalation` → 跳過其餘 TODO → 組 return 結束
+- `PASS`：進下一階段（完成階段）
+
+## 跨階段規範（所有階段通用，最重要）
+
+以下是無論在哪個階段，都應該遵守的規範：
+- 只在 `worktree` 內改 code，嚴禁碰 `repo_canonical_path`。範圍 = `issues.md` 的 kept 條，一條不多一條不少；順手看到「可以更好」的不准動。
+- build/test 輸出一律導檔、只 grep 錯誤行進 context：`<build_cmd> > <run_dir>/<unified_id>/build.log 2>&1` 後 `grep -E 'error|FAILED|Exception|FAIL' <...>/build.log | head -50`。**永不**把整坨 gradle/xcodebuild 輸出讀進 context——這是難畫面唯一會爆 context 的來源。
+- 截圖讀取紀律：每張圖每輪只 Read 一次，審查/驗證共用同一次 Read 結果，不重複 Read；非鄰域不 Read 鄰居圖。
+- 無狀態：不寫任何 `.audit` / heartbeat / 紀錄檔；暫存只落 `run_dir`（run 結束 orchestrator 清）。完成由 harness 通知 orchestrator，不寫 heartbeat。
+- 共享規則書：需要 triage / 修復安全約束（T1/T2/R、§3 優先序）/ MR schema 全細節 → Read `${CLAUDE_PLUGIN_ROOT}/skills/screen-mender/references/issue-schemas.md`（階段檔已內嵌常用規則，通常不必開）。
 
 ## 階段間交接（run_dir 暫存）
 
 - 截圖：`<run_dir>/<unified_id>/before__<state>__<locale>.png`、`after__<state>__<locale>.png`
 - 缺陷清單：`<run_dir>/<unified_id>/issues.md`
 - build log：`<run_dir>/<unified_id>/build.log`
-- 結構化結果（`capture_report` / `kept_count` / `fix_record` / `review_verdict` / `verify_verdict` / `residual_visible`）留你 context 帶著走，不另寫檔。
+- 結構化結果（`capture_report` / `kept_count` / `fix_record` / `verify_verdict` / `residual_visible`）留你 context 帶著走，不另寫檔。
 
 ## 回報（final message = 給 orchestrator 組總結，精簡）
 
@@ -86,11 +147,11 @@ escalation: <需打斷使用者的原因，否則空：STUCK / AUDIT_PROBLEM / b
 ```
 
 - 畫面狀態鐵則：after 圖只要還看得到 kept/deferred 缺陷，畫面就**不是 fully-fixed**（不論歸因字型 fallback／Locale.current／洗牌）——降 `partially-fixed` ＋ 殘留可見。verify PASS ≠ 整畫面乾淨。
-- `mr_url` 與「修了什麼／殘留／前後對照」的完整紀錄由 stage 6 寫進 MR（唯一 SSOT）；return 只給精簡摘要，不複製整份 MR description。
+- `mr_url` 與「修了什麼／殘留／前後對照」的完整紀錄由 stage 5 寫進 MR（唯一 SSOT）；return 只給精簡摘要，不複製整份 MR description。
 
 ## self-abort（無 heartbeat / 無 watchdog）
 
 不寫 heartbeat 檔；完成由 harness 通知 orchestrator。
 
 - fix 達 `iterate_max` 或 build 同錯連 3 次 → status `stuck`、填 `escalation`（platform / 卡點 / 試過什麼 / 建議）後 return。
-- review `AUDIT_PROBLEM` / 任一內部迴圈超 `internal_loop_max_rounds` → 填 `escalation` 後 return，不無限迴圈。
+- 審查與驗證階段回 `AUDIT_PROBLEM` / 內部迴圈（fix↔審查驗證）超 `internal_loop_max_rounds` → 填 `escalation` 後 return，不無限迴圈。

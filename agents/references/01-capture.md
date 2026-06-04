@@ -1,19 +1,19 @@
 # Stage 1 — capture（產圖）
 
-對應 SKILL Phase 2。在 lane worktree 內確保該畫面有 snapshot test，跑出一張過渲染閘的截圖當修復基準。
+在 lane worktree 內確保該畫面有 snapshot test，跑出一張過渲染閘的截圖當修復基準。
 
 ## Inputs
 - `worktree` / `branch` / `device_serial` / `unified_id` / `capture_locale` / `extra_audit_locales`
 - `run_dir`（截圖落 `<run_dir>/<unified_id>/`）
 
 ## Procedure
-1. 該畫面 snapshot test：
-   - 已存在 → 重用，直接重跑出最新截圖。
-   - 不存在 → 用 Skill `add-snapshot` 在 worktree 內建 test 並出截圖（`capture_locale`）。test 隨修復一起進 MR。
+1. 該畫面 snapshot test 是否存在？
+   - 是 → 重用，直接重跑出最新截圖。
+   - 否 → 用 Skill `add-snapshot` 在 worktree 內建 test 並出截圖（`capture_locale`）。test 隨修復一起進 MR。
 2. 在 `device_serial` 上跑、pull 截圖到 `<run_dir>/<unified_id>/before__<state>__<locale>.png`。
    - add-snapshot 的 on-device 檔名固定 `<snake>__<locale>.png`；pull 後改名成上面統一命名。
    - 單一 state → `state=default`。
-3. 條件式 UI 種對 state——種**最壞的真實內容**（最長字串／最極端 state；caller-driven 文案種真實呼叫點的最長訊息）。種錯 → 拍不到、下游誤判已修。同畫面多風險 state → 各拍一張。
+3. 條件式 UI 種對 state——種**最壞的真實內容**（最長字串／最極端 state；caller-driven 文案種真實呼叫點的最長訊息）。種錯 → 拍不到、下游誤判已修。
 4. 多 locale（`extra_audit_locales` 非空）→ 每個 extra locale 各出一張（換 locale runtime arg，檔名以 locale 區分）。預設只出 `capture_locale` 一張。
 5. **C1–C5 渲染標準閘**（正典 [`add-snapshot §6`](../../skills/add-snapshot/SKILL.md)）：C1 檔 >10KB / C2 資料區非空 / C3 locale 對 / C4 無 fallback 字串 / C5 無 crash·空白。
 6. capture 保真度旗標（**須回報、不可靜默**，見 [`issue-schemas`](../../skills/screen-mender/references/issue-schemas.md) §3.5）：

@@ -3,7 +3,7 @@
 > screen-mender 自帶的問題檔 schema、triage 規則、修復安全約束，零專案 lore。
 > known-intended 清單屬專案專屬，由 host 專案自身 rule 提供（見 §2 triage）；無則跳過該項。
 >
-> 角色詞對照（合併 agent 後）：下文「developer／reviewer／verifier」讀作 [`screen-mender-runner`](../../../agents/screen-mender-runner.md) 的 fix／review／verify 內部階段（對應 `agents/references/03-fix.md`／`04-review.md`／`05-verify.md`）。
+> 角色詞對照（合併 agent 後）：下文「developer／reviewer／verifier」讀作 [`screen-mender-runner`](../../../agents/screen-mender-runner.md) 的內部階段——developer = fix（`agents/references/03-fix.md`）；reviewer + verifier 已併為單一「審查與驗證」階段（`agents/references/04-verify.md`）。
 
 ## 1. 範圍：只修「截圖看得見」的視覺缺陷
 

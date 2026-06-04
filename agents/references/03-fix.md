@@ -46,8 +46,8 @@
 ## commit
 - commit（連同本畫面 snapshot test）；message「修 `<unified_id>` 視覺缺陷：<逐條>」。
 - push 到 `branch`；已 push 過用 `--force-with-lease`。`dry_run=true` → **只 commit、不 push**（含被退回重修輪）。
-- 被自審／自驗退回重修：只針對退回意見修，commit + `--force-with-lease` 重 push。
-- 你不自己 rebase——rebase 一律由 stage 6 在開 MR 前統一做。
+- 被審查／驗證退回重修：只針對退回意見修，commit + `--force-with-lease` 重 push。
+- 你不自己 rebase——rebase 一律由 stage 5 在開 MR 前統一做。
 
 ## Output / Exit
 - `fix_record[]`：每條 `{title, tier(T1|T2), fix_choice, skipped_higher(為何跳過縮文案/長高), before→after 一句, AC 達成?, legibility_degraded(比例,若有)}`。

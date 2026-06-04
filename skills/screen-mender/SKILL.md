@@ -1,7 +1,7 @@
 ---
 name: screen-mender
 description: >-
-  逐畫面修復「截圖看得見的視覺缺陷」，雙平台（iOS / Android 由 repo 檔案特徵自動偵測、零設定檔）。以單一畫面為原子單位跑完整閉環：每畫面派一個 runner agent，獨力跑「確保截圖 test → 出截圖 → 偵測缺陷 + triage + 附 AC → 修復→自審→自驗 → 發一個小 MR（含 before/after 截圖）」，回一段精簡 summary → 下一畫面。一個 MR = 一個畫面被完整修復；多畫面靠 N 條 lane（各獨佔一台裝置）work-stealing 並行。唯一人工點 = PR 把關。
+  逐畫面修復「截圖看得見的視覺缺陷」，雙平台（iOS / Android 由 repo 檔案特徵自動偵測、零設定檔）。以單一畫面為原子單位跑完整閉環：每畫面派一個 runner agent，獨力跑「確保截圖 test → 出截圖 → 偵測缺陷 + triage + 附 AC → 修復→審查驗證 → 發一個小 MR（含 before/after 截圖）」，回一段精簡 summary → 下一畫面。一個 MR = 一個畫面被完整修復；多畫面靠 N 條 lane（各獨佔一台裝置）work-stealing 並行。唯一人工點 = PR 把關。
 
   觸發：「跑 screen-mender」「逐畫面修視覺跑版」「一畫面一個小 MR 修 UI」「把這個 App 的畫面一個個修好」；只在明確要求「逐畫面修復閉環」時觸發。
 
@@ -19,7 +19,7 @@ description: >-
 ```
 從共享 queue（全部目標畫面，或使用者指定的子集）原子認領下一個畫面
   → 在本 lane 常駐 worktree checkout 新 branch，同一輪 spawn 一個 screen-mender-runner（背景）
-  → runner 獨力跑完整閉環：產圖（C1–C5 閘）→ 偵測 + triage + 附 AC → 修復→自審→自驗（真 render 上有界迭代）→ 發一個小 MR（修了什麼 + before/after 全寫 MR）
+  → runner 獨力跑完整閉環：產圖（C1–C5 閘）→ 偵測 + triage + 附 AC → 修復→審查驗證（真 render 上有界迭代）→ 發一個小 MR（修了什麼 + before/after 全寫 MR）
   → runner 回一段精簡 summary；orchestrator 通知使用者一句、釋放 lane，立刻認領下一個畫面（不追 merge）↺
 ```
 
@@ -29,7 +29,7 @@ description: >-
 - **雙平台、零設定** — 單次 run 鎖定一個平台，由 git repo 檔案特徵自動偵測（Phase 0），無 profile 設定檔；會隨 App 變的值（repo 路徑／build／test／pull／device／git host／base branch／locale／字串落點）起手自動解析。同資料夾並列兩 repo 各自偵測互不干擾。下文「emulator」在 iOS repo 即 simulator。
 - **無狀態** — 不留任何本地紀錄檔；「這畫面修過沒」每次 live 查 git host（merged／open MR）。因為 develop 一直在動、視覺缺陷會回歸，每跑必查才正確。
 - **MR 是唯一 SSOT** — 修了什麼、before/after 截圖、考慮過但不修的理由，全寫在 MR。run 期間暫存放 ephemeral run 目錄（temp／gitignored），run 結束即刪。
-- **不重造輪子** — capture 借 add-snapshot、列舉借 screen-list、單圖偵測借 shot-audit；本 skill 只加 per-screen 認領迴圈、work-stealing、per-lane worktree 重用，和**一個專屬 runner agent**（capture / audit / fix / review / verify / MR 串成它的 6 個內部階段）。無 planner——修法推理由 runner 在真 render 上迭代決定。
+- **不重造輪子** — capture 借 add-snapshot、列舉借 screen-list、單圖偵測借 shot-audit；本 skill 只加 per-screen 認領迴圈、work-stealing、per-lane worktree 重用，和**一個專屬 runner agent**（capture / audit / fix / 審查驗證 / MR 串成它的 5 個內部階段）。無 planner——修法推理由 runner 在真 render 上迭代決定。
 - **全部委派、不輪詢（無 watchdog）** — orchestrator（main session）只做配 lane／認領／**每畫面派一個 runner**／收 summary／發通知；capture／改 code／build／test／截圖／開 MR 全在背景 runner（`run_in_background`）內，orchestrator **不碰截圖·issues·diff·build log**。完成由 harness 通知驅動，不做 ScheduleWakeup 輪詢、不寫 heartbeat 檔。runner 端只保留 self-abort（達迭代上限／build 連錯 3 次 → return stuck）；互動觸發、使用者在線即 backstop。細節見 orchestration.md §1–2。
 - **lane 並行 + 常駐 worktree** — N 條 lane 各佔一台裝置，從共享 queue work-stealing 認領畫面；每條 worktree 整 run 重用、逐畫面換 branch、絕不 clean／重建 → 第 2+ 畫面走增量編譯。每 lane 獨佔裝置 → 無跨-lane 裝置鎖（lane 內 runner 的 capture／verify 本就序列，不需互斥鎖）。細節見 orchestration.md §3–4。
 - **唯一人工點 = PR 把關** — 偵測→修→發 MR 全自動，不設修前 issue 閘；使用者只在每個 per-screen 小 MR 上審 diff + 前後截圖。
@@ -47,21 +47,20 @@ description: >-
 screen-mender 自己負責：
 - per-screen 認領迴圈 + work-stealing
 - per-lane worktree 重用
-- 驅動一個 runner agent（其內部 6 階段把 capture / audit 併 triage+AC / fix / review / verify / MR 串起來）
+- 驅動一個 runner agent（其內部 5 階段把 capture / audit 併 triage+AC / fix / 審查驗證 / MR 串起來）
 
 ### 一個專屬 agent
 
 **[`screen-mender-runner`](../../agents/screen-mender-runner.md)**（內部 agent，由本 skill Phase 2 spawn，使用者勿直接呼叫）
 
-- 職責：**每畫面一個**，獨力跑 capture→audit→fix→review→verify→MR 共 6 階段，回一段精簡 summary。手持 6 格 TODO，逐格 Read `agents/references/0X-*.md` 階段 prompt 當該階段指令（早退畫面不讀後面幾格、省 context）。
-- 6 個內部階段（詳細規則在各階段檔；orchestrator 不需懂細節）：
+- 職責：**每畫面一個**，獨力跑 capture→audit→fix→審查驗證→MR 共 5 階段，回一段精簡 summary。手持 5 格 TODO，逐格 Read `agents/references/0X-*.md` 階段 prompt 當該階段指令（早退畫面不讀後面幾格、省 context）。
+- 5 個內部階段（詳細規則在各階段檔；orchestrator 不需懂細節）：
   - **capture**：確保 snapshot test（缺就用 add-snapshot 建）、出截圖、C1–C5 渲染閘、capture 保真旗標。
   - **audit**：shot-audit 偵測 + triage（`kept`/`deferred`/`wont-fix`）+ 每條附 AC → `issues.md`。
   - **fix**：讀 kept、依 §3 優先序在真 render 上有界迭代（≤`iterate_max`）、守 outcome（T1/T2/R）、字串依 `string_fix_policy`、commit + push。
-  - **review（自審）**：scope（只改 kept、無越界）+ redesign（修復 vs 重設計）兩判；NEEDS_CHANGES 回 fix。
-  - **verify（自驗）**：逐條比 AC（證據紀律：對齊類量水平軸）+ 同畫面視覺等價掃描 + 殘留盤點 + 鄰域 regression；FAIL 回 fix。
+  - **審查與驗證（self-review + self-verify）**：先審 diff（scope：只改 kept、無越界；redesign：修復 vs 重設計），再驗 after 截圖（逐條比 AC、證據紀律量水平軸 + 同畫面視覺等價掃描 + 殘留盤點 + 鄰域 regression）；產合併 `verify_verdict`，NEEDS_CHANGES 回 fix、AUDIT_PROBLEM 升級。
   - **mr**：冪等 live 查 + rebase + 開一個 MR（before/after 內嵌）+ 轉 ready。
-- 內部迴圈：`fix↔review`、`fix↔verify` 各 ≤ `internal_loop_max_rounds`；超界 / STUCK / AUDIT_PROBLEM → return `escalation`，由 orchestrator 上報使用者。
+- 內部迴圈：`fix↔審查驗證` ≤ `internal_loop_max_rounds`；超界 / STUCK / AUDIT_PROBLEM → return `escalation`，由 orchestrator 上報使用者。
 - context 紀律：build log 導檔只 grep 錯誤行、截圖讀一次、逐畫面歸零——這是它即使難畫面也不爆 context 的關鍵。
 
 ## 流程
@@ -169,7 +168,7 @@ runner 獨力跑 capture→audit→fix→review→verify→MR（細節見 [`scre
 - 釋放本 lane（claim 留著供對賬，worktree 留著續服務下一畫面）。
 - **不追 merge** → 立刻回 Phase 1 認領下一畫面。
 
-> 畫面狀態（`fully-fixed`／`partially-fixed`／`clean`）由 runner 在 stage 6 依「所有 kept+deferred 是否都解決」算定並寫進 MR；orchestrator 照 runner 的 status 轉述，不另判。verify PASS ≠ 整畫面乾淨。
+> 畫面狀態（`fully-fixed`／`partially-fixed`／`clean`）由 runner 在 stage 5 依「所有 kept+deferred 是否都解決」算定並寫進 MR；orchestrator 照 runner 的 status 轉述，不另判。verify PASS ≠ 整畫面乾淨。
 
 ### Phase 3：終止 + final summary
 
@@ -213,7 +212,7 @@ main session 輸出嚴格限縮在 milestone：
 
 ### 冪等 / 中斷
 
-- 冪等：runner 在 stage 6 開 MR 前 live 查 git host——該畫面 branch 已有 open MR → 跳過；已 merge 過且當前無新缺陷 → audit 0 條自然略過。
+- 冪等：runner 在 stage 5 開 MR 前 live 查 git host——該畫面 branch 已有 open MR → 跳過；已 merge 過且當前無新缺陷 → audit 0 條自然略過。
 - 中斷：無狀態 → 下次 run 重跑；同畫面 runner idempotent（worktree 增量 + MR 冪等 live 查）→ 不會重複發 MR。
 - claim↔live-runner 對賬：orchestrator 被完成通知喚醒、或讓 lane 收工前，對照 `claim_dir` 與 live runner；有 claim 卻無對應 live runner = 漏派，立即補 spawn（事件驅動，非 watchdog；見 orchestration.md §3）。
 

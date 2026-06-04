@@ -1,5 +1,6 @@
 ---
 name: screen-list
+user-invocable: false
 description: 掃 codebase，純讀 code 列出「應該建截圖 test」的目標——畫面 + 浮動元件（dialog / bottom-sheet / snackbar / toast / 系統 alert）+ 容器 chrome，輸出畫面的類別/函式清單。雙平台（細節讀 `references/<platform>.md`）。零外部清單、不產 test、不跑 emulator/sim、不改任何檔。觸發：「跑 screen-list」「列出該建截圖測試的畫面」「盤點畫面清單」。要實際產 test 走 add-snapshot；要逐畫面修跑版走 screen-mender。
 ---
 

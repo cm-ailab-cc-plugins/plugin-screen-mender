@@ -1,5 +1,6 @@
 ---
 name: add-snapshot
+user-invocable: false
 description: >-
   給一個畫面識別子（class name / 截圖 / 自然語言描述）+ locale，產一張該畫面在指定 locale 的 PNG：自動偵測 DI、種子依賴、寫 host + snapshot test、跑測試、Read PNG 自驗（C1–C5）。雙平台（iOS / Android），平台細節分檔於 `references/<platform>.md`。
 

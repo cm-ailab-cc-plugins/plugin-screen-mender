@@ -1,5 +1,6 @@
 ---
 name: shot-audit
+user-invocable: false
 description: 給一張 app 截圖（+ 可選 locale），找出畫面上看得見的跑版/視覺問題（截斷、爆框、重疊、錯位、譯文壞、locale 格式錯、對比不可讀），寫問題描述 + 調整建議。無狀態、雙平台（細節讀 `references/<platform>.md`）。觸發：「看這張截圖 UI 有沒有問題」「這張圖跑版在哪」。逐畫面修走 screen-mender。
 ---
 

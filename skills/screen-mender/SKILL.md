@@ -4,8 +4,6 @@ description: >-
   逐畫面修復「截圖看得見的視覺缺陷」，雙平台（iOS / Android 由 repo 檔案特徵自動偵測、零設定檔）。以單一畫面為原子單位跑完整閉環：每畫面派一個 runner agent，獨力跑「確保截圖 test → 出截圖 → 偵測缺陷 + triage + 附 AC → 修復→審查驗證 → 發一個小 MR（含 before/after 截圖）」，回一段精簡 summary → 下一畫面。一個 MR = 一個畫面被完整修復；多畫面靠 N 條 lane（各獨佔一台裝置）work-stealing 並行。唯一人工點 = PR 把關。
 
   觸發：「跑 screen-mender」「逐畫面修視覺跑版」「一畫面一個小 MR 修 UI」「把這個 App 的畫面一個個修好」；只在明確要求「逐畫面修復閉環」時觸發。
-
-  不要走本 skill：只列「該建截圖測試的畫面清單」走 screen-list、只找單張截圖問題走 shot-audit。
 ---
 
 # screen-mender
@@ -73,7 +71,10 @@ screen-mender 自己負責：
 - repo 路徑 = git toplevel（worktree／鎖目錄皆相對於此）。
 - git host／mr_tool：取 remote host → 含 `gitlab`/`github` 字樣直接判；自託管（host 是 IP／公司域名、無字樣）則看 `glab auth status`／`gh auth status` 哪個**涵蓋此 host**（robust 偵測與實例見 [`references/preflight.md`](references/preflight.md)〈git host 偵測〉；勿只比 URL 字樣——自託管 GitLab 的 remote 常不含 `gitlab` 字樣）。
 - base_branch：取 `git symbolic-ref refs/remotes/origin/HEAD`（取不到 → 偵測 develop／main／master）。
-- 模擬器執行環境：Android `adb`＋`emulator`＋SDK／iOS `xcrun simctl` 可用即可；實際裝置不需事先手動開——由 step 4「配 lane」跑 [`scripts/ensure-devices.sh`](scripts/ensure-devices.sh) 自動準備（查 pool→不足自建→開機），`lanes` 自動降到備妥數。
+- 模擬器執行環境
+  - Android `adb`＋`emulator`＋SDK
+  - iOS `xcrun simctl` 可用即可
+  - 實際裝置不需事先手動開——由 step 4「配 lane」跑 [`scripts/ensure-devices.sh`](scripts/ensure-devices.sh) 自動準備（查 pool→不足自建→開機），`lanes` 自動降到備妥數。
 - 目標 locale：問使用者要測哪個語系（見 step 5 `capture_locale`）。
 - build／test／pull 指令不在此解析 → 由 runner 於 capture 階段經 add-snapshot 取得後內部重用（fix/verify 階段共用）。
 - **環境快檢（preflight，自動、每次 run、無 `--doctor` 旗標）**：解析完上述後，依 [`references/preflight.md`](references/preflight.md) 一次性 live 探測環境，把缺漏分 ❌硬缺／⚠️軟缺／❓可能缺 三段，列成**單一 checklist**：

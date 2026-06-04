@@ -1,6 +1,6 @@
 # screen-mender 環境快檢（preflight，plugin 自帶，generic）
 
-> 何時跑：每次 run 起手（[`SKILL`](../SKILL.md) Phase 0.0），自動、無條件、無 `--doctor` 旗標。
+> 何時跑：每次 run 起手（SKILL Phase 0.0），自動、無條件、無 `--doctor` 旗標。
 > 怎麼跑：零設定、無狀態——全部 live 探測當前環境（指令存在？模擬器可自動備妥？CLI 已登入？檔案在？），不讀任何 profile。
 > 為什麼：在冷編／長 run 之前，一次把「環境缺什麼」列清楚，而不是跑到一半才在某個 sub-agent 深處反應式爆掉（最貴的失敗＝ snapshot harness 沒設好，冷編後才炸）。
 
@@ -13,12 +13,12 @@
     - 專案可能用命名不同的等價機制（例：自訂 swizzler、別名 lib）。
     - 靜態 grep 探不到不代表真的缺；擋了會誤殺。
     - 把確定性留給「實際 capture 出不出得了圖」。
-  - harness 類 ❓（A2 instrumentation runner／I1 snapshot lib／I2 swizzler）若**真的**缺：canary 會以 **1 次冷編**（非 N 次）定案、回 `harness-missing`、**停整 run** 並精準回報缺項 + setup.md 步驟（預設不自動接入）。見 [`SKILL`](../SKILL.md) Phase 1.0。
+  - harness 類 ❓（A2 instrumentation runner／I1 snapshot lib／I2 swizzler）若**真的**缺：canary 會以 **1 次冷編**（非 N 次）定案、回 `harness-missing`、**停整 run** 並精準回報缺項 + add-snapshot SKILL §10 接入步驟（預設不自動接入）。見 SKILL Phase 1.0。
 
 ## 探測項
 
 - 平台先測（項 1）。
-- harness／DI 類的「該長怎樣」一律以 [`../../add-snapshot/references/setup.md`](../../add-snapshot/references/setup.md) 與 [`../../add-snapshot/references/<platform>.md`](../../add-snapshot/references/) 為準。
+- harness／DI 類的「該長怎樣」一律以 [`add-snapshot`](../../add-snapshot/SKILL.md)（§10 接入步驟、§4 DI 表）為準。
 - 本檔只列「探什麼訊號、缺了去哪補」，不複製專案 lore。
 
 > grep 探測在 zsh 下記得用引號包住 glob（`--include='*.gradle'`），否則被當檔名展開、報 `no matches found`。
@@ -51,17 +51,17 @@
 | # | 級 | 探測 | 訊號 | 缺了 |
 |---|---|---|---|---|
 | A1 | ❌ | SDK 位置可解析 | canonical repo `local.properties` 含 `sdk.dir`，或環境有 `ANDROID_HOME`/`ANDROID_SDK_ROOT` | 皆無→硬缺（worktree 第一次 build 必 `SDK location not found` 白跑冷編）。orchestration §4 會把 `local.properties` 複製進 worktree，故 canonical 必須有它或有 env |
-| A2 | ❓ | instrumentation runner | grep `app/build.gradle*` 有 `testInstrumentationRunner` | 無跡象→可能缺，見 setup.md step 7 |
-| A3 | ❓ | debug activity | `app/src/debug/AndroidManifest.xml` 存在且宣告 activity | 無→可能缺，見 setup.md step 6 |
-| A4 | ❓ | DI 框架在表內 | grep 依賴有 Koin/Hilt/Dagger 跡象 | 無→可能缺（capture 時 add-snapshot DI 偵測會 escalate），見 [`../../add-snapshot/references/android.md`](../../add-snapshot/references/android.md) §DI 偵測 |
+| A2 | ❓ | instrumentation runner | grep `app/build.gradle*` 有 `testInstrumentationRunner` | 無跡象→可能缺，見 add-snapshot SKILL §10（step 7） |
+| A3 | ❓ | debug activity | `app/src/debug/AndroidManifest.xml` 存在且宣告 activity | 無→可能缺，見 add-snapshot SKILL §10（step 6） |
+| A4 | ❓ | DI 框架在表內 | grep 依賴有 Koin/Hilt/Dagger 跡象 | 無→可能缺（capture 時 add-snapshot DI 偵測會 escalate），見 [`add-snapshot`](../../add-snapshot/SKILL.md) §4 DI 偵測 |
 
 ### iOS 專屬
 
 | # | 級 | 探測 | 訊號 | 缺了 |
 |---|---|---|---|---|
-| I1 | ❓ | snapshot library | `Podfile`/`Package.swift`/`*.xcodeproj` 有 `SnapshotTesting`（或等價 swift-snapshot lib） | 無跡象→可能缺，見 setup.md step 5 |
-| I2 | ❓ | locale swizzler | test target grep 有 `localizedString(forKey` 的 swizzle（或等價 locale override 機制） | 無跡象→可能缺，見 setup.md step 4 |
-| I3 | ❓ | DI 框架在表內 | grep 有 Swinject／手 init／Storyboard factory 跡象 | 無→可能缺，見 [`../../add-snapshot/references/ios.md`](../../add-snapshot/references/ios.md) §DI 偵測 |
+| I1 | ❓ | snapshot library | `Podfile`/`Package.swift`/`*.xcodeproj` 有 `SnapshotTesting`（或等價 swift-snapshot lib） | 無跡象→可能缺，見 add-snapshot SKILL §10（step 5） |
+| I2 | ❓ | locale swizzler | test target grep 有 `localizedString(forKey` 的 swizzle（或等價 locale override 機制） | 無跡象→可能缺，見 add-snapshot SKILL §10（step 4） |
+| I3 | ❓ | DI 框架在表內 | grep 有 Swinject／手 init／Storyboard factory 跡象 | 無→可能缺，見 [`add-snapshot`](../../add-snapshot/SKILL.md) §4 DI 偵測 |
 
 ## 報告格式（一次列完，分三段；範例 Android）
 
@@ -75,7 +75,7 @@ screen-mender 環境快檢 · 平台 Android · 目標裝置 4 台
    · 找不到指定機型 Pixel 8 → 已退用本機最新機型 pixel_10 ⇒ snapshot 基準恐失真（建議 --device-android 釘住 suite 基準機型）
    · 清掉上一輪殘留：1 個 screen-mender-lane worktree ＋ .screen-mender/claims
 ❓ 可能缺（需人工確認，首個 capture 會驗證）
-   · 找不到 instrumentation runner 設定（build.gradle 無 testInstrumentationRunner）→ add-snapshot/setup.md step 7
+   · 找不到 instrumentation runner 設定（build.gradle 無 testInstrumentationRunner）→ add-snapshot SKILL §10（step 7）
 判定：無硬缺 → 續跑（2 lane）
 ```
 
@@ -92,7 +92,7 @@ screen-mender 環境快檢 · 平台 iOS · 目標裝置 4 台
 
 ## 判定
 
-- 任一 ❌ 硬缺 → 印 checklist（每條附一句「怎麼補」或 setup.md 指引）+ **終止**，不進 Phase 1。
+- 任一 ❌ 硬缺 → 印 checklist（每條附一句「怎麼補」或 add-snapshot SKILL §10 接入指引）+ **終止**，不進 Phase 1。
 - 無硬缺 → 印 checklist（含 ⚠️ 已降級與 ❓ 待確認）後**續跑**。
 - ❓ 可能缺一律不擋（理由見〈判級〉）。
 - 探測本身只 live 查、不新寫任何狀態檔（不落 `.audit`、不寫 profile），維持無狀態。唯一的「動檔」是項 9 清掉**上一輪 crash 殘留**的 `screen-mender-lane*` worktree 與 `.screen-mender/claims|locks`——這是回收前輪殘骸、非建立本輪狀態，不違反無狀態。

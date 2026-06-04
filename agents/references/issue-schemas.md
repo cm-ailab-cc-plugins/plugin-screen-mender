@@ -78,7 +78,7 @@
 | `representative-render` | 以重建 chrome 出圖（非 live 控制器） |
 | `code-verified／snapshot-unverifiable` | 修對了但 sim 仍顯舊值/before-after byte-identical |
 
-**畫面狀態**（§4；runner 完整 status enum 見 [`screen-mender-runner`](../screen-mender-runner.md)）
+**畫面狀態**（§4；runner 完整 status enum 見 runner agent screen-mender-runner）
 
 | token | 中文 |
 |---|---|
@@ -160,7 +160,7 @@ after 圖仍可見 → 列殘留可見、畫面降 `partially-fixed`。
 
 fix 階段中途發現 deferred：
 
-- 用 return 的 `deferred[]` 回報（見 [`03-fix`](03-fix.md)）。
+- 用 return 的 `deferred[]` 回報（見 fix 階段）。
 - runner 在 mr 階段列入 MR 殘留可見段（最顯眼處），不靜默吞。
 
 ## 3. 修復安全約束（outcome-based：守「結果」不守「手段」）
@@ -308,7 +308,7 @@ screen-mender 全靠截圖偵測＋驗收，但截圖可能不忠於真機。
 > v3 起無 planner，職責分工：
 > - triage（real-visual-defect vs wont-fix）與 AC 由 audit 階段 agent 在偵測時一併產出。
 >   - 原因：它已在看截圖 + code，邊際成本低。
-> - 「怎麼修 / 反查 file:line / 選 tier」由 runner 的 fix 階段在真 render 上迭代決定（見 [`03-fix`](03-fix.md)）。
+> - 「怎麼修 / 反查 file:line / 選 tier」由 runner 的 fix 階段在真 render 上迭代決定。
 
 修了什麼／不修什麼／before-after 一律寫進 MR description（不產任何 `.audit` 檔：wont-fix / pending-merge / fixed / ledger）。
 
@@ -356,6 +356,6 @@ screen-mender 全靠截圖偵測＋驗收，但截圖可能不忠於真機。
 - [<category>] <title> — <wont-fix reason vocab 之一>
 ```
 
-before/after 截圖經 `POST /projects/:id/uploads` 取得 `/uploads/...` markdown 後內嵌（見 [`orchestration`](../../skills/screen-mender/references/orchestration.md) §5）。
+before/after 截圖經 `POST /projects/:id/uploads` 取得 `/uploads/...` markdown 後內嵌。
 
 - 上傳細節：multipart，`curl -F file=@<png>` + token。

@@ -214,7 +214,7 @@ Reference: orchestration.md §3–4
 
 - 只用**第一條 lane** 原子認領第一個畫面，spawn runner 時帶 `canary=true`（其餘 lane 先按住、不認領）。
 - 等該 runner 的完成通知（事件驅動，不輪詢）：
-  - 回 `harness-missing` → **不 fan-out、停整 run**：依 runner `escalation` 印「缺哪幾項 + `add-snapshot/references/setup.md` 對應步驟 + build error 摘要」，請使用者一次性接入後重跑（預設**不自動改建置設定**）。
+  - 回 `harness-missing` → **不 fan-out、停整 run**：依 runner `escalation` 印「缺哪幾項 + add-snapshot SKILL §10 接入步驟 + build error 摘要」，請使用者一次性接入後重跑（預設**不自動改建置設定**）。
   - 回 `canary-ok`（capture 過閘）→ harness 成立，進 1.1 放開其餘 lane 正常 fan-out；canary 那條 lane 對**同一畫面**改派正常 runner（`canary=false`），capture 走 warm 重用、續完整閉環。
   - 回 `locked`/`defect`（harness 在、單純這個 canary 畫面出不了圖）→ harness 仍成立：照常進 1.1 fan-out，該畫面列 backlog；canary lane 認領下一個畫面。
 - 單畫面 run（目標僅 1 個）→ canary 過閘後即由該 lane 正常修完，無其他 lane 可放。
@@ -261,7 +261,7 @@ orchestrator 已知值轉傳，runner 不讀設定檔
   - `clean`：audit 0 條 → 無 MR，summary 列入。
   - `locked`／`defect`／`stuck`：列入 final summary backlog；`stuck` 且 `escalation` 非空 → 立刻打斷使用者。
   - `canary-ok`：canary 閘的早退訊號（非畫面結局）→ 不發 milestone，按 Phase 1.0 放開其餘 lane、對同畫面改派正常 runner。
-  - `harness-missing`：**專案級** harness 缺失（只會由 canary 回）→ **停整 run**，依 `escalation` 印「缺哪幾項 + setup.md 步驟 + build error 摘要」、打斷使用者，不 fan-out、不續認領。
+  - `harness-missing`：**專案級** harness 缺失（只會由 canary 回）→ **停整 run**，依 `escalation` 印「缺哪幾項 + add-snapshot SKILL §10 接入步驟 + build error 摘要」、打斷使用者，不 fan-out、不續認領。
   - `dry_run`：把「小 MR 已發（!x）」換成「試跑完成，產物 `<run_dir>/<unified_id>/`」；殘留語意照舊。
 - `escalation` 非空（STUCK／AUDIT_PROBLEM／build 連敗 3 次／字串資源檔修改失敗）→ 打斷使用者、附 runner 給的卡點與建議。
 - 釋放本 lane（claim 留著供對賬，worktree 留著續服務下一畫面）。
@@ -317,7 +317,7 @@ main session 輸出嚴格限縮在 milestone：
 ### 失敗模式
 
 - 相依 skill（add-snapshot／shot-audit／screen-list）或 runner agent 缺失 → Phase 0 preflight 即列為 ❌硬缺、印 checklist 後終止（見 [`references/preflight.md`](references/preflight.md)），不留到起動後才反應式爆出。其餘環境硬缺（無裝置／git host 未登入／git transport 不通或無 push 權限／`curl` 或上傳 token 缺／磁碟不足／Android SDK 測不到）亦同階段一次攔下。
-- 專案未接 snapshot harness（缺 instrumentation runner／snapshot lib／swizzler 等測試前置）→ preflight 靜態只標 ❓，**Phase 1.0 canary 閘**以 1 次冷編權威定案、回 `harness-missing`、**停整 run** 並回報缺項 + setup.md 步驟；不白燒 N 次冷編、預設不自動改建置設定。
+- 專案未接 snapshot harness（缺 instrumentation runner／snapshot lib／swizzler 等測試前置）→ preflight 靜態只標 ❓，**Phase 1.0 canary 閘**以 1 次冷編權威定案、回 `harness-missing`、**停整 run** 並回報缺項 + add-snapshot SKILL §10 接入步驟；不白燒 N 次冷編、預設不自動改建置設定。
 - manifest 列舉失敗 → 上報「screen-list 未產出 `screen-list.json`」。
 - 某畫面卡 locked／defect／stuck → 不阻塞整 run，列入 summary backlog、續下一畫面。
 - 全部畫面 locked／defect／clean、零可修 → final summary 標 `nothing-to-fix`。

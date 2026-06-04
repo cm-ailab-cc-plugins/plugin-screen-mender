@@ -45,3 +45,20 @@
 ## 平台
 
 iOS / Android 雙平台，由 repo 檔案特徵自動偵測，零設定檔。
+
+## 文件結構與引用紀律（維護準則）
+
+文件採 **hub-and-spoke**，避免長鏈與循環引用（最深引用 ≤ 1 層）。改文件時守以下四條：
+
+**兩個 hub（進入點，always-loaded）**
+- `skills/screen-mender/SKILL.md`（orchestrator）
+- `agents/screen-mender-runner.md`（runner）
+- 其餘 `references/*` 皆為 spoke。
+
+**四條連結規則**
+1. **hub → spoke（散開只發生在進入點）**：由 hub 負責連到它要用的 reference；spoke 不替 hub 散開。
+2. **spoke 只指「另一個元件的進入點」，不指它的 `references/*` 內部**。跨元件＝handoff 到對方的樹根（如指 `add-snapshot/SKILL.md`，不指 `add-snapshot/references/setup.md`），不算加深本樹。
+3. **共享規則書 `issue-schemas.md` 是「終點 sink」**：可被多檔指入（扇入是好事、DRY），但**永不往外指**。任何 `…→issue-schemas` 路徑就此終止。
+4. **spoke 不回指 hub**：要提 hub 用純文字（如「見 SKILL Phase 1.0」），不掛連結。
+
+**一句話**：扇入到 sink 沒問題；要避免的是 ①sink 外指、②指進別人 internals、③spoke 回指 hub——這三者才會造出鏈與環。純文字麵包屑（如「step 7」）不是導覽邊、不受此限，但仍以指向進入點為準。

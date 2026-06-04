@@ -142,7 +142,7 @@ git -C <lane_worktree> checkout <base_branch> && git -C <lane_worktree> pull --f
 
 `mr_tool` 由 git remote 推得：gitlab→glab / github→gh。MR = 唯一 SSOT，零紀錄檔。
 
-> 新模型下本節由 **runner 的 mr 階段**執行（見 [`screen-mender-runner`](../../../agents/screen-mender-runner.md) 與 `agents/references/05-mr.md`），orchestrator 不直接碰 MR。
+> 新模型下本節由 **runner 的 mr 階段**執行（見 runner agent screen-mender-runner 與其 05-mr 階段），orchestrator 不直接碰 MR。
 
 ### §5.0 dry-run（試跑，不開 MR）
 

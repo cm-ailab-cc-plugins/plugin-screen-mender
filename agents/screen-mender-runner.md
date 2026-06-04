@@ -96,7 +96,7 @@ model: opus
 
 依照渲染失敗原因，標不同的 status:
 - snapshot harness / 測試相依根本不在（add-snapshot 在「跑 test」因缺 instrumentation runner／測試相依／snapshot lib 而**編不過或 instrument 起不來**，非單畫面問題）: `harness-missing`
-  - 填 `escalation`：缺哪幾項 + 對應 setup 步驟（`add-snapshot/references/setup.md`）+ build error 摘要（grep 自 build.log，勿貼整坨）。
+  - 填 `escalation`：缺哪幾項 + 對應 setup 步驟（add-snapshot SKILL §10 接入步驟）+ build error 摘要（grep 自 build.log，勿貼整坨）。
   - 這是**專案級**缺失：orchestrator 收到會停掉整 run（見 SKILL canary 閘），不是只跳過本畫面。
 - 需要調整 production code: `locked`
 - 一渲染就 crash: `defect`

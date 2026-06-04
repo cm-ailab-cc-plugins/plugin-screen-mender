@@ -23,9 +23,7 @@
 
 | Agent | 角色 |
 |-------|------|
-| `screen-mender-developer` | 在 lane worktree 內依 AC 修復缺陷並 commit/push |
-| `screen-mender-reviewer` | 審單一畫面修復的 diff（scope / redesign 把關） |
-| `screen-mender-verifier` | 逐條比對 AC + 同畫面視覺等價掃描 |
+| `screen-mender-runner` | 內部 agent：每畫面一個，手持 6 格 TODO 獨力跑 capture→audit→fix→review→verify→MR 完整閉環，回精簡 summary（取代舊 developer/reviewer/verifier 三 agent，由 skill spawn、勿直接呼叫） |
 
 ## 平台
 

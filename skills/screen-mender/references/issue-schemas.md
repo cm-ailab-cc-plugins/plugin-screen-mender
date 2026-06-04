@@ -2,6 +2,8 @@
 
 > screen-mender 自帶的問題檔 schema、triage 規則、修復安全約束，零專案 lore。
 > known-intended 清單屬專案專屬，由 host 專案自身 rule 提供（見 §2 triage）；無則跳過該項。
+>
+> 角色詞對照（合併 agent 後）：下文「developer／reviewer／verifier」讀作 [`screen-mender-runner`](../../../agents/screen-mender-runner.md) 的 fix／review／verify 內部階段（對應 `agents/references/03-fix.md`／`04-review.md`／`05-verify.md`）。
 
 ## 1. 範圍：只修「截圖看得見」的視覺缺陷
 
@@ -70,7 +72,7 @@ after 圖仍可見 → 列殘留可見、畫面降 `partially-fixed`。
   - 與 `needs-design` 嚴格區分：needs-design 是「不知道怎麼修才對」；deferred-by-run-config 是「知道怎麼修、只是這個 run 不准修」。
   - 鐵則：不可把 config 限制誤標成 needs-design（會淡化「其實已知可修、是我關掉的」這個事實），也不可因此默默改用縮字級硬塞。
 
-developer 修復中途發現 deferred → 用 return 的 `deferred[]` 回報（見 [`screen-mender-developer`](../../../agents/screen-mender-developer.md)），orchestrator 列入 MR 殘留可見段（最顯眼處），不靜默吞。
+fix 階段中途發現 deferred → 用 return 的 `deferred[]` 回報（見 [`03-fix`](../../../agents/references/03-fix.md)），runner 在 mr 階段列入 MR 殘留可見段（最顯眼處），不靜默吞。
 
 ## 3. 修復安全約束（outcome-based：守「結果」不守「手段」）
 
@@ -194,7 +196,7 @@ screen-mender 全靠截圖偵測＋驗收，但截圖可能不忠於真機。以
 > v3 起無 planner，職責分工：
 > - triage（real-visual-defect vs wont-fix）與 AC 由 audit 階段 agent 在偵測時一併產出。
 >   - 原因：它已在看截圖 + code，邊際成本低。
-> - 「怎麼修 / 反查 file:line / 選 tier」由 developer 在真 render 上迭代決定（見 [`screen-mender-developer`](../../../agents/screen-mender-developer.md)）。
+> - 「怎麼修 / 反查 file:line / 選 tier」由 runner 的 fix 階段在真 render 上迭代決定（見 [`03-fix`](../../../agents/references/03-fix.md)）。
 
 修了什麼／不修什麼／before-after 一律寫進 MR description（不產任何 `.audit` 檔：wont-fix / pending-merge / fixed / ledger）。
 

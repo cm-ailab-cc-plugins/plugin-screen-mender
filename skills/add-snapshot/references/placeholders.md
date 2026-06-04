@@ -1,6 +1,6 @@
 # add-snapshot — Placeholder 規約（單一來源）
 
-> 何時讀本檔：填 host / test 範本，或跨專案搬移要 search-replace 時。所有「跨專案會被換成具體值」的 token 一律走大駝峰角括號形式；skill 本體不寫死任何專案字面。
+> 何時讀本檔：填 host / test 範本、或要知道 placeholder 如何被 runtime 代入時。所有「逐畫面會被換成具體值」的 token 一律走大駝峰角括號形式；skill 本體不寫死任何專案字面。
 
 ## 共用 / 識別
 
@@ -54,6 +54,10 @@
 | `<SeedStatements>` | 範本 E 內比照 production 設 `@IBOutlet` / model 的種資料敘述 | `view.titleLabel.text = ...` |
 | `<ReproduceLayoutConstraints>` | 範本 E 內 TEST-ONLY 重建 production 版面約束的敘述（讓 layout 缺陷現形，不碰 production） | `stack.distribution = .fillEqually` |
 
-## 跨專案搬移
+## placeholder 怎麼被代入
 
-複製整個 `add-snapshot/` 資料夾 → search-replace 把上表 placeholder 換成自己專案的值。
+placeholder 不是「一次性 search-replace 進 skill 檔」的東西——skill 本體永遠保持泛用、角括號原樣不動。
+
+- 代入時機：skill 在 §5 產 host / test 範本時，逐畫面用該畫面的實際值取代範本內的 `<CamelCase>`。
+- 代入者：執行 skill 的 agent（runtime），依上表把每個 token 換成當前 `(TargetClass, LocaleTag, …)` 對應值，只寫進**產出的** host/test 檔。
+- 因此同一份 skill 跨專案、跨畫面通用——不需複製資料夾、不需改 skill 任何檔。

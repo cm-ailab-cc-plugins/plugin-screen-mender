@@ -1,10 +1,13 @@
 # add-snapshot — iOS 細節規則
 
-> 平台 = iOS 時只讀本檔，不要讀 `android.md`。共用骨架（流程 6 階段、self-verify、SLA、output）回 SKILL.md；placeholder 表見 [`placeholders.md`](placeholders.md)、接入見 [`setup.md`](setup.md)、iOS 陷阱見本檔 §常見陷阱（iOS）。
+> 平台 = iOS 時只讀本檔，不要讀 `android.md`。
+> 共用骨架（流程 6 階段、self-verify、SLA、output）回 SKILL.md。
+> 註：placeholder 表見 [`placeholders.md`](placeholders.md)、接入見 [`setup.md`](setup.md)、iOS 陷阱見本檔 §常見陷阱（iOS）。
 
 ## DI 偵測
 
-依下表順序偵測，命中其一即停；未命中 → fail-fast 上報。
+- 依下表順序偵測，命中其一即停。
+- 未命中 → fail-fast 上報。
 
 | 平台 | DI 系統 | 偵測訊號（檔案 / 字串） | host 載入種子方式 |
 |---|---|---|---|
@@ -52,12 +55,10 @@ final class <SnapshotTestName>: XCTestCase {
         let locale = Self.snapshotLocale
         let view = <SwiftUIView>(<ClosureArgs>)
         snapshotScreen(of: view, named: locale)
-        addTeardownBlock { Self.copyBaselineToAuditInbox(locale: locale) }
     }
-
-    // copyBaselineToAuditInbox(locale:) / locateBaselinePNG / locateRepoRoot 從既有 ref snapshot test 沿用
-    // 核心邏輯：tearDown 時把 swift-snapshot 產的 baseline PNG 複製到
-    // <RepoRoot>/.audit/inbox/ios/previews/<SnakeName>__<locale>.png
+    // baseline 由 swift-snapshot record 模式同步寫到 test 原始碼旁的
+    // `__Snapshots__/<SnapshotTestName>/`（檔名含 `<LocaleTag>`）；模擬器與 host 共用 FS。
+    // 取回 + 改名一律由呼叫者在 xcodebuild 跑完後做（見 §跑命令「取回 baseline」），test 碼不碰落點。
 }
 ```
 
@@ -107,14 +108,15 @@ final class <SnapshotTestName>: XCTestCase {
         wait(for: [exp], timeout: 1.0)
 
         snapshotViewController(of: vc, named: locale)
-        addTeardownBlock { Self.copyBaselineToAuditInbox(locale: locale) }
     }
+    // baseline 落 `__Snapshots__/<SnapshotTestName>/`；取回由呼叫者做（見 §跑命令「取回 baseline」），test 碼不碰落點。
 }
 ```
 
 ### 範本 E：iOS UIKit cell / `UITableViewHeaderFooterView` / xib view（從 nib 載入，非 storyboard、非 VC）
 
-適用：tableview header/footer、cell、或任何從 `.xib` 載入的 `UIView` 子類。perfB 實證可跑。
+- 適用：tableview header/footer、cell、或任何從 `.xib` 載入的 `UIView` 子類。
+- perfB 實證可跑。
 
 ```swift
 @testable import <ModuleName>
@@ -165,13 +167,14 @@ final class <SnapshotTestName>: XCTestCase {
 
         // 5) 渲染（record-only）。若專案 SnapshotStrategy 有 UIView helper 就用之；無則 assertSnapshot 直打。
         XCTExpectFailure { assertSnapshot(of: container, as: .image, record: true) }
-        addTeardownBlock { Self.copyBaselineToAuditInbox(locale: locale) }
     }
-    // copyBaselineToAuditInbox(locale:) 從既有 ref snapshot test 沿用（同範本 C/D）
+    // baseline 落 `__Snapshots__/<SnapshotTestName>/`；取回由呼叫者做（見 §跑命令「取回 baseline」），test 碼不碰落點。
 }
 ```
 
-pbxproj：同範本 C/D——test 檔須加進 `<TestTargetName>` 的 PBXSourcesBuildPhase（4 anchors），否則 `Executed 0 tests`。詳見下方 §常見陷阱（iOS）。
+pbxproj：同範本 C/D。
+- test 檔須加進 `<TestTargetName>` 的 PBXSourcesBuildPhase（4 anchors），否則 `Executed 0 tests`。
+- 詳見下方 §常見陷阱（iOS）。
 
 ## 跑特定 locale 的命令
 
@@ -187,23 +190,37 @@ TEST_RUNNER_SNAPSHOT_LOCALE=<LocaleTag> xcodebuild test \
 
 `TEST_RUNNER_` prefix 必填——Xcode 標準機制，裸 env 無效。
 
-**批量跑多 locale**（一次跑一個語系）：
+#### 取回 baseline（呼叫者做，test 不碰落點）
+
+- 模擬器與 host 共用檔案系統；swift-snapshot record 模式把 PNG **同步**寫到 test 原始碼旁，xcodebuild 跑完即落地（不需等 teardown、不需 test 端 copy）。
+- add-snapshot 剛把 test 建在已知路徑，故 `__Snapshots__` 目錄可直接組出、免全樹搜：
+
+```shell
+cp "<test .swift 所在目錄>/__Snapshots__/<SnapshotTestName>/"*<LocaleTag>*.png \
+   "<呼叫者給的絕對 dest 目錄>/<SnakeName>__<LocaleTag>.png"
+```
+
+> 與 Android 對稱：test 只把圖產到 library 固定位置（iOS `__Snapshots__/` ／ Android on-device `snapshots/`），落點與改名一律呼叫者側（iOS `cp` ／ Android `adb pull`）；test 碼零落點邏輯。
+
+#### 批量跑多 locale（一次跑一個語系）
 
 ```shell
 for loc in vi ja ko id; do
-  TEST_RUNNER_SNAPSHOT_LOCALE=$loc xcodebuild test ...
+  TEST_RUNNER_SNAPSHOT_LOCALE=$loc xcodebuild test ...   # 跑完各自 cp 取回（見上「取回 baseline」）
 done
 ```
 
-> 執行方式（同步阻塞跑一次、redirect log、禁輪詢）兩平台共通，見 SKILL.md §9.1a 尾段。
+> 註：執行方式（同步阻塞跑一次、redirect log、禁輪詢）兩平台共通，見 SKILL.md §9.1a 尾段。
 
 ## 常見陷阱（iOS）
 
-吸收歷次 retro 教訓的防呆清單。平台無關陷阱見 SKILL.md §11；`TEST_RUNNER_` env prefix、`HeaderFooterView.contentView` 不可 reparent 已在上方 §跑命令 / §Host 範本 範本 E 註解內。
+- 吸收歷次 retro 教訓的防呆清單。
+- 平台無關陷阱見 SKILL.md §11。
+- `TEST_RUNNER_` env prefix、`HeaderFooterView.contentView` 不可 reparent 已在上方 §跑命令 / §Host 範本 範本 E 註解內。
 
 | 陷阱 | 防呆做法 |
 |---|---|
 | pbxproj 加 .swift target membership 漏 | 兩個 .swift 檔須加入 `<TestTargetName>` 的 PBXSourcesBuildPhase；用 `xcodeproj` gem ruby script 或手改 pbxproj 4 anchors；不改 GCC_PREPROCESSOR_DEFINITIONS / 不改 OTHER_LDFLAGS |
-| Combine binding 沒 settle 就 capture | UIKit VC 範本 D 內 `wait(for: [exp], timeout: 1.0)`；SwiftUI 範本 C 用 `addTeardownBlock` 確保 baseline 寫入完才 copy |
+| Combine binding 沒 settle 就 capture | UIKit VC 範本 D 內 `wait(for: [exp], timeout: 1.0)` 等 settle 再截；SwiftUI 範本 C 由 `snapshotScreen` helper 內部等首幀 |
 | storyboard VC `lazy var viewModel`（private）無法覆寫 | 改走 VC 公開 factory（如 `instantiate(dataModel:from:)`）的 stub 入口；無公開 factory → 換畫面 |
 | Storyboard `formSheet` / popover modal VC 在 snapshot 渲染時被裁切 | 在 host 端覆寫 `vc.modalPresentationStyle = .fullScreen` 或用 `UINavigationController` 包裝；snapshot helper 內 frame 強設 `393 × 852` 對 modal-style VC 無效 |

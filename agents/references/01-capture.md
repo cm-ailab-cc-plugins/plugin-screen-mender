@@ -1,0 +1,65 @@
+# Stage 1 — capture（產圖）
+
+在 lane worktree 內確保該畫面有 snapshot test，跑出一張過渲染閘的截圖當修復基準。
+
+## Inputs
+- `worktree` / `branch` / `device_serial` / `unified_id` / `capture_locale` / `extra_audit_locales`
+- `run_dir`（截圖落 `<run_dir>/<unified_id>/`）
+
+## Procedure
+
+### 1. 確保 snapshot test
+- 該畫面 snapshot test 是否存在？
+  - 是 → 重用，直接重跑出最新截圖。
+  - 否 → 用 Skill `add-snapshot` 在 worktree 內建 test 並出截圖（`capture_locale`）。test 隨修復一起進 MR。
+
+### 2. 跑出截圖並取回
+- 在 `device_serial` 上跑，把 `<run_dir>/<unified_id>/` 當 dest（傳**絕對路徑**給 add-snapshot，勿用 cwd 相對路徑）。
+  - Android：`adb pull` 從 on-device 路徑取到該 dest；iOS：xcodebuild 跑完後 `cp` swift-snapshot baseline（`__Snapshots__/<test>/`）到該 dest。兩者都呼叫者側取回，test 不碰落點。
+- add-snapshot 的來源檔名固定 `<snake>__<locale>.png`；取回後改名成 `before__<state>__<locale>.png`。
+- 單一 state → `state=default`。
+
+### 3. 種對 state
+- 條件式 UI 種對 state——種**最壞的真實內容**。
+  - 最長字串／最極端 state；caller-driven 文案種真實呼叫點的最長訊息。
+- 種錯 → 拍不到、下游誤判已修。
+
+### 4. 多 locale 出圖
+- 多 locale（`extra_audit_locales` 非空）→ 每個 extra locale 各出一張（換 locale runtime arg，檔名以 locale 區分）。
+- 預設只出 `capture_locale` 一張。
+
+### 5. C1–C5 渲染標準閘
+> 正典 [`add-snapshot §6`](../../skills/add-snapshot/SKILL.md)
+- C1 檔 >10KB
+- C2 資料區非空
+- C3 locale 對
+- C4 無 fallback 字串
+- C5 無 crash·空白
+
+### 6. capture 保真度旗標
+> **須回報、不可靜默**，見 [`issue-schemas`](issue-schemas.md) §3.5
+- `font-fidelity-degraded`：自訂字型未註冊、fallback 到系統字型。
+  - 註：系統字型通常較寬、會遮蔽字型專屬爆框。
+- `representative-render`：以重建 chrome（非 live 控制器）出圖。
+- `capture-nondeterministic`：內容隨機／async／字型間歇 fallback。
+  - **同 state 連拍兩張比對**，不一致 → 固定 seed。
+  - seed 不了則標此旗標（before/after 不可比，下游不得在其上判視覺等價 PASS）。
+- `locale-unverifiable`：harness 只換 app 字串、沒換 `Locale.current`／`Calendar.current`／asset `preferredLocalizations` → 日期·數字·週幾·在地化圖仍顯模擬器語系。
+  - 相關缺陷轉人工/真機。
+
+## Output（runner 記下，供後續階段）
+- before 截圖路徑（每 state/locale 一張）。
+- `build_cmd` / `snapshot_test_cmd`：add-snapshot 回報的實際指令。
+  - **後面 fix / verify 階段重用**。
+  - test 已存在則同樣回報其重跑指令。
+- `capture_report`：C1–C5 是否過 + `fidelity_flags[]`。
+
+## Exit
+- **canary 過閘**（prompt `canary=true` 且 build+出圖成功）→ status `canary-ok`，**立即早退**（不進偵測/修復/MR），交 orchestrator 放開其餘 lane。worktree 已暖，後續同畫面正常 runner 走 warm 重用。
+- **snapshot harness / 測試相依根本不在**（add-snapshot 在「跑 test」因缺 instrumentation runner／測試相依／snapshot lib 而 build 編不過或 instrument 起不來）→ status `harness-missing`，填 `escalation`（缺哪幾項 + add-snapshot SKILL §10 接入步驟 + build error 摘要）。**專案級缺失**：orchestrator 收到停整 run（見 SKILL canary 閘），非只跳過本畫面。
+- 渲染不出（需 production seam）→ status `locked`。
+- 一渲染就 crash → status `defect`。
+- 上述（harness-missing 除外，那是停 run）列 backlog、結束本畫面（其餘 TODO 標掉、不開 MR）。
+- retry 上限仍 fail（暫時性）→ 同上，記 summary。
+
+> harness-missing vs locked 的界線：`locked` = harness 在、但這一個畫面需要動 production code 才出得了圖（單畫面問題、跳過續下一個）；`harness-missing` = 整個專案還沒接 snapshot harness（每個畫面都會撞、續跑無意義 → 停 run、請使用者一次性接入）。

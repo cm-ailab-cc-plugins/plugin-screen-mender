@@ -74,10 +74,37 @@ android_resolve_tools() {
       [ -x "$c" ] && { AVDMANAGER="$c"; break; }
     done
   fi
-  AVD_HOME="${ANDROID_AVD_HOME:-$HOME/.android/avd}"
+  android_resolve_avd_home
+}
+
+android_resolve_avd_home() {
+  # 真正的 AVD 落點未必是 ~/.android/avd（可能被 ANDROID_AVD_HOME / ANDROID_EMULATOR_HOME /
+  # ANDROID_SDK_HOME 改向）。以「某個已存在 AVD 的 .ini/.avd 真的在那」驗證候選目錄，挑中真的那個。
+  local c probe
+  probe=$(android_list_avds 2>/dev/null | head -1)   # 任一已知 AVD 名（emulator -list-avds）
+  for c in "${ANDROID_AVD_HOME:-}" \
+           "${ANDROID_EMULATOR_HOME:+$ANDROID_EMULATOR_HOME/avd}" \
+           "${ANDROID_SDK_HOME:+$ANDROID_SDK_HOME/.android/avd}" \
+           "$HOME/.android/avd"; do
+    [ -n "$c" ] && [ -d "$c" ] || continue
+    if [ -z "$probe" ]; then AVD_HOME="$c"; return; fi          # 無任何 AVD → 取第一個存在的目錄
+    if [ -e "$c/$probe.ini" ] || [ -d "$c/$probe.avd" ]; then AVD_HOME="$c"; return; fi
+  done
+  AVD_HOME="${ANDROID_AVD_HOME:-$HOME/.android/avd}"             # 最後退路：預設
 }
 
 android_list_avds() { "$EMULATOR" -list-avds 2>/dev/null; }
+
+android_find_avd_ci() {
+  # pool 名大小寫不敏感比對：命中回磁碟上的「實際 AVD 名」（如 test_phone_01 命中 Test_Phone_01）
+  local want_lc a a_lc
+  want_lc=$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')
+  for a in $(android_list_avds); do
+    a_lc=$(printf '%s' "$a" | tr '[:upper:]' '[:lower:]')
+    [ "$a_lc" = "$want_lc" ] && { printf '%s' "$a"; return 0; }
+  done
+  return 1
+}
 
 android_is_booted() {
   [ "$("$ADB" -s "$1" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = "1" ]
@@ -208,8 +235,11 @@ android_create_avd() {
 
 android_ensure_one() {
   # 確保名為 $1 的 pool AVD 存在且開機，回傳 serial
-  local name="$1" serial
-  if ! android_list_avds | grep -qx "$name"; then
+  # pool 名大小寫不敏感：命中現有（如 Test_Phone_01）就沿用實際名直接開機，不重建/不複製。
+  local name="$1" serial actual
+  if actual=$(android_find_avd_ci "$name"); then
+    name="$actual"
+  else
     android_create_avd "$name" || return $?
   fi
   serial=$(android_serial_for_avd "$name") || serial=""
@@ -234,10 +264,12 @@ android_preflight() {
 android_teardown() {
   android_resolve_tools
   [ -n "$ADB" ] || { warn "無 adb，略過 Android teardown"; return 0; }
-  local s nm
+  local s nm nm_lc pfx_lc
+  pfx_lc=$(printf '%s' "$PREFIX" | tr '[:upper:]' '[:lower:]')
   for s in $("$ADB" devices 2>/dev/null | awk '/emulator-.*device$/{print $1}'); do
     nm=$("$ADB" -s "$s" emu avd name 2>/dev/null | head -1 | tr -d '\r')
-    case "$nm" in "$PREFIX"*) log "關機 $nm ($s)（保留 profile）"; "$ADB" -s "$s" emu kill >/dev/null 2>&1;; esac
+    nm_lc=$(printf '%s' "$nm" | tr '[:upper:]' '[:lower:]')   # pool 名大小寫不敏感
+    case "$nm_lc" in "$pfx_lc"*) log "關機 $nm ($s)（保留 profile）"; "$ADB" -s "$s" emu kill >/dev/null 2>&1;; esac
   done
 }
 
@@ -248,12 +280,14 @@ ios_preflight() {
 }
 
 ios_list_pool() {
-  # 印 pool 裝置：name<TAB>udid<TAB>state（只列 available runtime 下的）
+  # 印 pool 裝置：name<TAB>udid<TAB>state（只列 available runtime 下的）；pool 名大小寫不敏感
+  local pfx_lc; pfx_lc=$(printf '%s' "$PREFIX" | tr '[:upper:]' '[:lower:]')
   xcrun simctl list devices available 2>/dev/null | while IFS= read -r line; do
-    case "$line" in
-      *"$PREFIX"*"("*)
+    line_lc=$(printf '%s' "$line" | tr '[:upper:]' '[:lower:]')
+    case "$line_lc" in
+      *"$pfx_lc"*"("*)
         nm=$(printf '%s' "$line" | sed -E 's/^[[:space:]]*//; s/ \(.*//')
-        case "$nm" in "$PREFIX"*) ;; *) continue;; esac
+        case "$(printf '%s' "$nm" | tr '[:upper:]' '[:lower:]')" in "$pfx_lc"*) ;; *) continue;; esac
         udid=$(printf '%s' "$line" | grep -oE '[0-9A-Fa-f]{8}-([0-9A-Fa-f]{4}-){3}[0-9A-Fa-f]{12}' | head -1)
         st=$(printf '%s' "$line" | grep -oE '\((Booted|Booting|Shutdown|Shutting Down)\)' | tail -1 | tr -d '()')
         [ -n "$udid" ] && printf '%s\t%s\t%s\n' "$nm" "$udid" "$st"
@@ -262,7 +296,8 @@ ios_list_pool() {
   done
 }
 
-ios_udid_for() { ios_list_pool | awk -F'\t' -v n="$1" '$1==n{print $2; exit}'; }
+# pool 名大小寫不敏感找 udid（命中沿用磁碟實際名）
+ios_udid_for() { ios_list_pool | awk -F'\t' -v n="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')" 'tolower($1)==n{print $2; exit}'; }
 
 ios_devicetype_id() {
   # 精確機型名 → SimDeviceType id（避免 "iPhone 16" 誤中 "iPhone 16 Pro"）

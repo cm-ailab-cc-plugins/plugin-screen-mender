@@ -1,10 +1,13 @@
 # add-snapshot — Android 細節規則
 
-> 平台 = Android 時只讀本檔，不要讀 `ios.md`。共用骨架（流程 6 階段、self-verify、SLA、output）回 SKILL.md；placeholder 表見 [`placeholders.md`](placeholders.md)、接入見 [`setup.md`](setup.md)、Android 陷阱見本檔 §常見陷阱（Android）。
+> 平台 = Android 時只讀本檔，不要讀 `ios.md`。
+> 共用骨架（流程 6 階段、self-verify、SLA、output）回 SKILL.md。
+> 註：placeholder 表見 [`placeholders.md`](placeholders.md)、接入見 [`setup.md`](setup.md)、Android 陷阱見本檔 §常見陷阱（Android）。
 
 ## DI 偵測
 
-依下表順序偵測，命中其一即停；未命中 → fail-fast 上報。
+- 依下表順序偵測，命中其一即停。
+- 未命中 → fail-fast 上報。
 
 | 平台 | DI 系統 | 偵測訊號（檔案 / 字串） | host 載入種子方式 |
 |---|---|---|---|
@@ -13,7 +16,8 @@
 | Android | Dagger（純 Dagger，無 Hilt） | `build.gradle*` 含 `com.google.dagger:dagger`；Application 內手刻 `<AppName>Component` | 自建 test component 繼承 production component，override `@Provides`；host 從 test component 取實例 |
 | Android | ServiceLocator / 手 wiring | Application 內手動建單例 / `object` 持有實例；無 DI library 訊號 | host activity `onCreate` 前手工覆寫 service locator 內單例參考；用 `@VisibleForTesting` setter |
 
-host 載入種子方式照表；reflection 讀 instrumentation arg 的細節見下方範本 A 註解。
+- host 載入種子方式照表。
+- reflection 讀 instrumentation arg 的細節見下方範本 A 註解。
 
 ## Host 範本（填 placeholder 規約見 [`placeholders.md`](placeholders.md)）
 
@@ -112,14 +116,17 @@ class <SnapshotTestName> {
 }
 ```
 
-跑完後 pull PNG：
+跑完後 pull PNG（dest 用呼叫者給的絕對路徑，直接指到 `run_dir`）：
 
 ```shell
 adb pull /sdcard/Android/data/<PackageName>/files/snapshots/<SnakeName>__<LocaleTag>.png \
-  .audit/inbox/android/previews/<SnakeName>__<LocaleTag>.png
+  <呼叫者給的絕對 dest 目錄>/<SnakeName>__<LocaleTag>.png
 ```
 
-> on-device 來源檔名固定 `<SnakeName>__<LocaleTag>.png`；上面第二個路徑（host 落點）是 standalone 預設，呼叫者（如 screen-mender）可改 pull 到自己的目錄並改名。詳見 SKILL.md §9.1。
+> 註：
+> - on-device 來源檔名固定 `<SnakeName>__<LocaleTag>.png`，是唯一固定契約。
+> - host 落點由呼叫者（screen-mender runner）以絕對路徑指定；本 skill 不預設任何持久落點。
+> - 詳見 SKILL.md §9.1。
 
 ### 範本 B：Android XML DialogFragment / View（無 Compose）
 
@@ -172,7 +179,6 @@ class <HostActivityName> : AppCompatActivity() {
 
 instrumented test 與範本 A 同款（換 `<HostActivityName>` / `<SnakeName>`）。
 
-
 ## 跑特定 locale 的命令
 
 **Android**：
@@ -189,11 +195,13 @@ ANDROID_SERIAL=<emulator-serial> ./gradlew :app:connectedDebugAndroidTest \
 
 或用 `adb -s <emulator-serial> shell am instrument -e class <FQClassName> -e snapshot_locale <LocaleTag> ...`。
 
-> 執行方式（同步阻塞跑一次、redirect log、禁輪詢）兩平台共通，見 SKILL.md §9.1a 尾段。
+> 註：執行方式（同步阻塞跑一次、redirect log、禁輪詢）兩平台共通，見 SKILL.md §9.1a 尾段。
 
 ## 常見陷阱（Android）
 
-吸收歷次 retro 教訓的防呆清單。平台無關陷阱見 SKILL.md §11；`--tests` 不支援、instrumentation arg 走 reflection 已在上方 §跑命令 / §Host 範本 註解內。
+- 吸收歷次 retro 教訓的防呆清單。
+- 平台無關陷阱見 SKILL.md §11。
+- `--tests` 不支援、instrumentation arg 走 reflection 已在上方 §跑命令 / §Host 範本 註解內。
 
 | 陷阱 | 防呆做法 |
 |---|---|
@@ -203,5 +211,5 @@ ANDROID_SERIAL=<emulator-serial> ./gradlew :app:connectedDebugAndroidTest \
 | mockk-android jvmti 16K page-size 失敗 | 預設不用 mockk-android；走 seed real data source / DI override 路徑 |
 | `Theme.AppCompat` 不夠用 Material theme | 範本 B host activity 預設 `Theme.Material.Light.NoActionBar`；不夠時切 `Theme.MaterialComponents.Light.NoActionBar` |
 | LaunchedEffect 內 analytics call 撞 network | host 改傳 noop logger 物件（不靠 DI），避免阻塞渲染或當 |
-| PNG 落 worktree 相對 `.audit/`（`adb pull` 用 cwd 相對路徑；從 worktree 跑 = 落 worktree 的 `.audit/`，不在 canonical root）→ 下游 shot-audit 撈不到 | pull destination 在 host 端從 cwd walk up 找含 `.audit/inbox/` 的祖先目錄再 pull，不要用 cwd 相對路徑 |
+| `adb pull` 用 cwd 相對路徑 → 從 worktree 跑時落點會跟著 cwd 跑、呼叫者撈不到 | pull destination 一律用呼叫者給的**絕對路徑**（指到 `run_dir`），不要用 cwd 相對路徑 |
 | feature module 內的 Composable 畫面：instrumented test 跑時 `TETheme` → `TECompositionLocal` → `getKoin()` 撞 `IllegalStateException("KoinApplication has not been started")`（feature module 的 androidTest 跑在自己的 test package，沒 `MyApplication` bootstrap Koin） | 該 module `src/androidTest` 加一個 module-local `SnapshotTestRunner`（custom `AndroidJUnitRunner`，`newApplication()` 內 `if (GlobalContext.getOrNull()==null) startKoin { androidContext(app); modules(emptyList()) }`）+ module `build.gradle.kts` 設 `testInstrumentationRunner`；直接沿用既有 `SnapshotTestRunner.kt` 範本 |

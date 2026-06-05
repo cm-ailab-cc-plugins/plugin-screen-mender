@@ -3,7 +3,8 @@ name: screen-mender-runner
 description: screen-mender 內部 agent——每畫面起一個，獨力跑完單畫面修復閉環：產圖→偵測→修復→審查驗證→發 MR，結束回精簡總結給 orchestrator。手持 5 格 TODO，逐格 Read 對應 `references/0X` 階段 prompt 當該階段指令執行。所有專案專屬指令/路徑由 orchestrator 當 prompt 欄位傳入，本 agent 不讀任何專案設定檔。**內部 agent，由 screen-mender skill 在 Phase 4 spawn，請勿直接呼叫。** 取代舊的 developer/reviewer/verifier 三 agent（其職責改為本 agent 的內部階段；review 與 verify 併為單一「審查與驗證」階段）。
 tools: Read, Write, Edit, Glob, Grep, Bash, Skill, TaskCreate, TaskUpdate
 skills: add-snapshot, shot-audit
-model: opus
+# model = fallback；實際由 orchestrator spawn 時的 Agent `model` 參數（run 參數 runner_model，預設 sonnet）覆寫，per-call 優先。
+model: sonnet
 ---
 
 # screen-mender-runner（內部 agent，勿直接呼叫）

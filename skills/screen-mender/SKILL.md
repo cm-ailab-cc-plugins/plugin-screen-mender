@@ -273,12 +273,13 @@ orchestrator 已知值轉傳，runner 不讀設定檔
 
 所有 lane 收工 → 回報一份 final summary。
 
-- 呈現：口頭／對話呈現 + 寫一份到 ephemeral run 目錄；不留 .audit。
+- 呈現：口頭／對話呈現 + **依 [`references/report-template.md`](references/report-template.md) 產一份持久報告**落 `<repo>/.screen-mender/reports/run-<run_id>.md`（非 ephemeral、teardown 不刪、不進版控）；不留 .audit。報告依修復程度分三段（完全修復／部分修復／未能修復；clean 不列），每畫面列 unified_id、修復項目（條列、一句一條）、MR 連結（`dry_run` → `proposed-mr.md` 路徑），部分修復必列殘留可見缺陷。
+- 結束告知：final summary 收尾**必明確告訴使用者報告路徑**（`報告已產出：<repo>/.screen-mender/reports/run-<run_id>.md`），引導使用者前往查看。
 - 內容：各畫面狀態（`fully-fixed`／`partially-fixed (n fixed, m deferred-visible)`／`clean`／locked／defect／stuck）+ MR 連結（`dry_run` → 改列 `<run_dir>/<unified_id>/proposed-mr.md` 路徑）。`partially-fixed` 要列殘留可見缺陷與原因（`needs-design`／`deferred-by-run-config`）。
 - 觀測（每畫面）：附一行 compact 耗時 `capture <a>s · audit <b>s · fix <c>s/<k> builds (<r> rounds) · verify <d>s`（資料來自各 runner summary 的 `timing`），並點出本 run 最慢階段與 build 次數最高的畫面（=最該優化處）；`trace=true` → 改出完整逐階段 breakdown（見 [`orchestration`](references/orchestration.md) §7）。
 - capture 保真度旗標：列出本 run 有 `font-fidelity-degraded`／`representative-render`／`capture-nondeterministic`／`locale-unverifiable` 的畫面（這類「乾淨」或「已修」可能是 capture 不忠於真機造成的假象；`locale-unverifiable` 另列「需真機抽驗」清單）。
 - run-config 揭露：明示本 run 的 `string_fix_policy` 與 `dry_run`；若 `string_fix_policy` 關閉了「縮文案」這條修法，列出因此 `deferred-by-run-config` 的缺陷。`dry_run` 時明示「本 run 未開任何 MR，產物在 `<run_dir>`」。
-- 收尾：清掉所有 lane worktree + `claim_dir`；跑 [`scripts/ensure-devices.sh`](scripts/ensure-devices.sh) `--teardown --platform <P>` 關機所有自管 `test_phone_NN`（保留 profile 供下次重用、只動 pool 不碰其他裝置）；已 merge 的 branch 清除；ephemeral run 目錄（`.screen-mender/runs/<run_id>/`）刪除（`dry_run` 例外：run 目錄保留並回報路徑，見 orchestration §5.6）。
+- 收尾：清掉所有 lane worktree + `claim_dir`；跑 [`scripts/ensure-devices.sh`](scripts/ensure-devices.sh) `--teardown --platform <P>` 關機所有自管 `test_phone_NN`（保留 profile 供下次重用、只動 pool 不碰其他裝置）；已 merge 的 branch 清除；ephemeral run 目錄（`.screen-mender/runs/<run_id>/`）刪除（`dry_run` 例外：run 目錄保留並回報路徑，見 orchestration §5.6）。**只刪 `runs/<run_id>/`；持久報告 `.screen-mender/reports/` 不在刪除範圍，保留供事後查看。**
 
 ## 參考
 
@@ -300,7 +301,7 @@ main session 輸出嚴格限縮在 milestone：
 
 1. 開頭一句：「開始 screen-mender；待檢查畫面 N 個（全部／指定）。」
 2. 每畫面 runner 回 summary 後一句（Phase 2）：小 MR 已發 + 修了幾條 + 連結；有殘留可見缺陷時標「部分修復」並點出殘留（不得單用「已修」）。
-3. 終止一份 final summary。
+3. 終止一份 final summary，並告知持久報告路徑（`.screen-mender/reports/run-<run_id>.md`）供查看。
 
 只有以下情況才打斷使用者（一律由 runner return 的 `escalation` 帶上來）：
 

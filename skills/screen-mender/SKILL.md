@@ -156,6 +156,12 @@ Reference: orchestration.md §3–4
 #### 5. 參數預設
 
 - `lanes`：`4` — 並行 lane 數；每條獨佔一台 emulator，從共享 queue work-stealing 認領畫面。
+- `runner_model`：`sonnet` — 每畫面 runner 的 model，整 run 統一。
+  - **省用量主槓桿**：runner 是唯一大宗 token 消耗者（×畫面數），降一階 model 整體用量直接降數倍。
+  - 值：`sonnet`（預設，省用量）｜`opus`（視覺 audit/verify 判斷最準，貴數倍）｜`haiku`（最省，但視覺判斷易失準、不建議）。
+  - 於 Phase 1.1 spawn runner 時用 Agent 的 `model` 參數帶入，覆寫 runner agent frontmatter 預設（per-call 優先）；canary runner 同此 model。
+  - 取捨：audit/verify 的視覺判斷對 model 等級較敏感；`sonnet` 通常夠用，難畫面（多 `stuck`／殘留可見偏多）可單獨 `--model opus` 重跑。
+  - 觸發：`/screen-mender --model <sonnet|opus|haiku> ...`。
 - `device_android`：`Pixel 8`
   - Android 自動建模擬器用的機型
   - 本機無此 profile 或無 avdmanager → 退用本機最新 Pixel／複製現有 AVD。
@@ -212,7 +218,7 @@ Reference: orchestration.md §3–4
 
 目的：「snapshot harness 在不在」是**專案級**前提，且只有真 build 一次才確定（preflight 的 ❓ harness 項在此被權威定案）。起跑若直接 fan-out N 條 lane，缺 harness 的專案會**白燒 N 次冷編**才一起撞牆——canary 把成本壓到 1 次冷編。
 
-- 只用**第一條 lane** 原子認領第一個畫面，spawn runner 時帶 `canary=true`（其餘 lane 先按住、不認領）。
+- 只用**第一條 lane** 原子認領第一個畫面，spawn runner 時帶 `canary=true`、`model: <runner_model>`（其餘 lane 先按住、不認領）。
 - 等該 runner 的完成通知（事件驅動，不輪詢）：
   - 回 `harness-missing` → **不 fan-out、停整 run**：依 runner `escalation` 印「缺哪幾項 + add-snapshot SKILL §10 接入步驟 + build error 摘要」，請使用者一次性接入後重跑（預設**不自動改建置設定**）。
   - 回 `canary-ok`（capture 過閘）→ harness 成立，進 1.1 放開其餘 lane 正常 fan-out；canary 那條 lane 對**同一畫面**改派正常 runner（`canary=false`），capture 走 warm 重用、續完整閉環。
@@ -227,7 +233,7 @@ Reference: orchestration.md §3–4
    - 挑選：優先挑與本 lane worktree 當前 branch 同 module 者，減少 branch churn。
    - 認不到任何未認領畫面 → 本 lane 收工；所有 lane 都收工 → 跳 Phase 3。
 2. **切 branch**：在本 lane 常駐 worktree `checkout -b <feature_branch_prefix><unified_id>`（不新建／不 clean worktree → 增量編譯；做法見 orchestration.md §4）。
-3. **spawn runner（背景）**：**同一輪**立刻 spawn 一個 [`screen-mender-runner`](../../agents/screen-mender-runner.md)（`run_in_background`），傳入 Phase 2 列的 prompt 欄位。
+3. **spawn runner（背景）**：**同一輪**立刻 spawn 一個 [`screen-mender-runner`](../../agents/screen-mender-runner.md)（`run_in_background`），傳入 Phase 2 列的 prompt 欄位，並以 Agent 的 `model` 參數帶 `runner_model`（覆寫 frontmatter）。
    - 鐵則：認領與 spawn 必須同一輪 tool-call 完成，不可只 `mkdir`／敘述「已認領、待會派」卻漏掉 spawn。
 
 ### Phase 2：runner 跑完整畫面閉環（背景）
@@ -253,6 +259,8 @@ orchestrator 已知值轉傳，runner 不讀設定檔
 - `snapshot_test_cmd` / `build_cmd`（已知則預填，否則 runner 於 capture 經 add-snapshot 取得）
 - `neighborhood_test_cmds`（`neighborhood_regression=true` 時帶：與本 `unified_id` 同 module／feature、且 base 已有 snapshot test 的鄰域畫面測試指令；無鄰域 → 不帶）
 
+> 註：`runner_model` **不走 prompt 欄位**，而是 spawn runner 時 Agent 的 `model` 參數（覆寫 frontmatter，per-call 優先）；runner 本身不需感知用了哪個 model。
+
 **收到 runner summary 後**（依 `status`，狀態鐵則見 [`runner 回傳契約`](../../agents/screen-mender-runner.md)）：
 
 - 發 milestone 通知一句（見〈對話節奏〉）：
@@ -273,12 +281,13 @@ orchestrator 已知值轉傳，runner 不讀設定檔
 
 所有 lane 收工 → 回報一份 final summary。
 
-- 呈現：口頭／對話呈現 + 寫一份到 ephemeral run 目錄；不留 .audit。
+- 呈現：口頭／對話呈現 + **依 [`references/report-template.md`](references/report-template.md) 產一份持久報告**落 `<repo>/.screen-mender/reports/run-<run_id>.md`（非 ephemeral、teardown 不刪、不進版控）；不留 .audit。報告依修復程度分三段（完全修復／部分修復／未能修復；clean 不列），每畫面列 unified_id、修復項目（條列、一句一條）、MR 連結（`dry_run` → `proposed-mr.md` 路徑），部分修復必列殘留可見缺陷。
+- 結束告知：final summary 收尾**必明確告訴使用者報告路徑**（`報告已產出：<repo>/.screen-mender/reports/run-<run_id>.md`），引導使用者前往查看。
 - 內容：各畫面狀態（`fully-fixed`／`partially-fixed (n fixed, m deferred-visible)`／`clean`／locked／defect／stuck）+ MR 連結（`dry_run` → 改列 `<run_dir>/<unified_id>/proposed-mr.md` 路徑）。`partially-fixed` 要列殘留可見缺陷與原因（`needs-design`／`deferred-by-run-config`）。
 - 觀測（每畫面）：附一行 compact 耗時 `capture <a>s · audit <b>s · fix <c>s/<k> builds (<r> rounds) · verify <d>s`（資料來自各 runner summary 的 `timing`），並點出本 run 最慢階段與 build 次數最高的畫面（=最該優化處）；`trace=true` → 改出完整逐階段 breakdown（見 [`orchestration`](references/orchestration.md) §7）。
 - capture 保真度旗標：列出本 run 有 `font-fidelity-degraded`／`representative-render`／`capture-nondeterministic`／`locale-unverifiable` 的畫面（這類「乾淨」或「已修」可能是 capture 不忠於真機造成的假象；`locale-unverifiable` 另列「需真機抽驗」清單）。
 - run-config 揭露：明示本 run 的 `string_fix_policy` 與 `dry_run`；若 `string_fix_policy` 關閉了「縮文案」這條修法，列出因此 `deferred-by-run-config` 的缺陷。`dry_run` 時明示「本 run 未開任何 MR，產物在 `<run_dir>`」。
-- 收尾：清掉所有 lane worktree + `claim_dir`；跑 [`scripts/ensure-devices.sh`](scripts/ensure-devices.sh) `--teardown --platform <P>` 關機所有自管 `test_phone_NN`（保留 profile 供下次重用、只動 pool 不碰其他裝置）；已 merge 的 branch 清除；ephemeral run 目錄（`.screen-mender/runs/<run_id>/`）刪除（`dry_run` 例外：run 目錄保留並回報路徑，見 orchestration §5.6）。
+- 收尾：清掉所有 lane worktree + `claim_dir`；跑 [`scripts/ensure-devices.sh`](scripts/ensure-devices.sh) `--teardown --platform <P>` 關機所有自管 `test_phone_NN`（保留 profile 供下次重用、只動 pool 不碰其他裝置）；已 merge 的 branch 清除；ephemeral run 目錄（`.screen-mender/runs/<run_id>/`）刪除（`dry_run` 例外：run 目錄保留並回報路徑，見 orchestration §5.6）。**只刪 `runs/<run_id>/`；持久報告 `.screen-mender/reports/` 不在刪除範圍，保留供事後查看。**
 
 ## 參考
 
@@ -291,6 +300,7 @@ orchestrator 已知值轉傳，runner 不讀設定檔
 
 - `/screen-mender` — 掃全部畫面、逐畫面修。
 - `/screen-mender <畫面...>` — 只掃指定畫面。
+- `/screen-mender --model <sonnet|opus|haiku> [畫面...]` — 指定 runner model（預設 `sonnet`，省用量主槓桿；難畫面可改 `opus`）。
 - `/screen-mender --dry-run [畫面...]` — 試跑：照常偵測+修+驗，但不開 MR，產物落 run 目錄供檢視。
 - 自然語言：「跑 screen-mender」「逐畫面修視覺跑版」「一畫面一個小 MR 修 UI」；試跑：「試跑 screen-mender」「先別開 MR、給我看會怎麼改」。
 
@@ -298,9 +308,9 @@ orchestrator 已知值轉傳，runner 不讀設定檔
 
 main session 輸出嚴格限縮在 milestone：
 
-1. 開頭一句：「開始 screen-mender；待檢查畫面 N 個（全部／指定）。」
+1. 開頭一句：「開始 screen-mender；待檢查畫面 N 個（全部／指定）；runner model = `<runner_model>`。」（非預設 `sonnet` 時尤其要點明，讓使用者知道用量／品質取捨）
 2. 每畫面 runner 回 summary 後一句（Phase 2）：小 MR 已發 + 修了幾條 + 連結；有殘留可見缺陷時標「部分修復」並點出殘留（不得單用「已修」）。
-3. 終止一份 final summary。
+3. 終止一份 final summary，並告知持久報告路徑（`.screen-mender/reports/run-<run_id>.md`）供查看。
 
 只有以下情況才打斷使用者（一律由 runner return 的 `escalation` 帶上來）：
 

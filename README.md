@@ -16,6 +16,7 @@
 ```bash
 /screen-mender # 掃全部畫面、逐畫面修。
 /screen-mender <畫面...> # 只掃指定畫面。
+/screen-mender --model <sonnet|opus|haiku> [畫面...] # 指定 runner model（預設 sonnet）。
 /screen-mender --dry-run [畫面...] # 試跑：照常偵測+修+驗，但不開 MR，產物落 run 目錄供檢視。
 /screen-mender [自然語言描述]  #自然語言：「跑 screen-mender」「逐畫面修視覺跑版」「一畫面一個小 MR 修 UI」；試跑：「試跑 screen-mender」「先別開 MR、給我看會怎麼改」。
 ```

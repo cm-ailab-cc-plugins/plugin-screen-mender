@@ -73,6 +73,7 @@ orchestrator 不做 heartbeat 輪詢 / ScheduleWakeup watchdog。每畫面一個
 - 鐵則：認領與「spawn 該畫面的 runner」必須在同一輪 tool-call 內完成。
   - 不可只 `mkdir`／敘述「已認領、待會 launch」卻把 spawn 的 tool call 漏掉。
   - > 註：曾因此讓一條 lane 閒置數十分鐘才被發現補發。
+- spawn 時以 Agent 的 `model` 參數帶 run 參數 `runner_model`（預設 `sonnet`；省用量主槓桿，覆寫 runner agent frontmatter，per-call 優先）。canary runner 同此 model。
 
 ```
 for unified_id in manifest（優先挑與本 lane worktree 當前 branch 同 module 者，減少 branch churn）:

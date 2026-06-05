@@ -6,9 +6,10 @@
 
 1. **確認 DI 框架在對照表內**（`references/<platform>.md §DI 偵測`）
    - 不在就加一行 row 並對應寫一份 host 範本（PR 回 skill repo）。
-2. **iOS swizzler**
+2. **iOS swizzler + `Locale.current` 啟動 locale**
    - 確認 test target 內已有 swizzler / 等價的 locale override 機制；無則先建。
    - 典型：method swizzling `Bundle.localizedString(forKey:value:table:)`，安裝在 `XCTestCase.setUp` class method。
+   - swizzler 只管 app 字串；另須在 test plan/scheme 設 App Language/Region（或命令帶 `-testLanguage`/`-testRegion`）讓 `Locale.current` 忠真，否則日期/星期/數字 formatter 顯模擬器 locale（見 [`ios.md` §`Locale.current` 忠真](ios.md)）。Android host `attachBaseContext` 已內建對等機制。
 3. **iOS snapshot library** — 確認 `SnapshotTesting` / 等價 swift-snapshot library 已加入 test target（SPM 或 CocoaPods）。
 4. **Android debug activity**
    - 確認 `app/src/debug/AndroidManifest.xml` 已宣告 debug-only activity 允許清單。

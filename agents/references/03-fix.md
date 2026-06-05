@@ -63,6 +63,15 @@
   - Compose：放寬 maxLines 後加 `textAlign = TextAlign.Center`（通常配 `Modifier.fillMaxWidth()`）。
   - SwiftUI：frame `alignment` ≠ `.multilineTextAlignment`；多行置中要設 `.multilineTextAlignment(.center)`。
   - 自檢必問「改完多行時還置中／對齊、跟兄弟元素一致嗎」，不只問「文字出現了嗎」。
+- **固定外觀控制項換行 → 必同時接住「背景容器垂直容納」**（不然是把水平截斷換成垂直爆框，等同搬移截斷）：
+  - 對象：有背景／邊框／固定外觀者——按鈕、膠囊 pill、卡片、固定高 cell。
+  - 強預設順位 1 縮字串（固定狀態短訊息如「人數已滿」尤其）；採換行須讓背景隨內容長高，否則文字擠爆／溢出背景。
+  - iOS UIKit：`titleLabel.numberOfLines=0` 不會自動長高——移除固定高約束改 `>=` minHeight + `contentEdgeInsets`／`configuration.contentInsets` 垂直內距；膠囊 cornerRadius 若 = 高/2，長高後須在 `layoutSubviews` 重算，否則 pill 退化成圓角矩形。
+  - iOS SwiftUI：`.lineLimit(nil)` + `.fixedSize(horizontal:false, vertical:true)`；容器勿 `.frame(height:)`（會裁切）改 `.frame(minHeight:)` + 垂直 `.padding`；`Capsule()` 背景自隨內容長高。
+  - Android XML：`MaterialButton`／`TextView` 放寬 `maxLines` 時 `layout_height` 勿固定 dp，改 `wrap_content` + `minHeight` + 垂直 padding；`app:cornerRadius` 設半高做 pill 者長高後變矩形，改 `shapeAppearance` `cornerSize=50%` 或接受矩形。
+  - Android Compose：放寬 `maxLines` 時容器勿 `Modifier.height()`（會裁切）改 `Modifier.heightIn(min=…)` + `contentPadding`；`RoundedCornerShape(percent=50)` 自適應。
+  - 自檢必 Read after 確認背景完整包住多行文字、上下未貼死／溢出、pill 未退化、鄰居未被推擠。
+  - **跨兄弟畫面共用同一字串 key 必採同一修法**（同一 `maxPeopleReached` 在 A/B 縮字串、C 卻換行 = 不一致，違 §3 一致性）。
 
 ## commit
 - commit（連同本畫面 snapshot test）；message「修 `<unified_id>` 視覺缺陷：<逐條>」。

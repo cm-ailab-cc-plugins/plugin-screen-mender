@@ -185,10 +185,23 @@ TEST_RUNNER_SNAPSHOT_LOCALE=<LocaleTag> xcodebuild test \
   -workspace <WorkspaceName>.xcworkspace \
   -scheme <SchemeName> \
   -only-testing:<TestTargetName>/<SnapshotTestName>/testSnapshot \
-  -destination 'generic/platform=iOS Simulator'
+  -destination 'generic/platform=iOS Simulator' \
+  -testLanguage <Lang> -testRegion <Region>
 ```
 
 `TEST_RUNNER_` prefix 必填——Xcode 標準機制，裸 env 無效。
+
+#### `Locale.current` 忠真（非預設 locale 必做）
+
+只 swizzle 字串 bundle 不夠：走 `Locale.current`/`Calendar.current` 的日期、星期、數字 formatter 仍會渲染成模擬器 locale（如 vi run 顯 zh_TW 日期）。
+
+- iOS `Locale.current` **進程啟動即定、不可在 `setUp` 中途改**（已實證 `AppleLanguages`/`AppleLocale` 在 `setUp` 設無效）。須在啟動帶 locale，三選一（可靠度高→低）：
+  1. test plan（`.xctestplan`）`defaultOptions.language`/`region`（版控、最權威）。
+  2. scheme Test action 的 App Language / App Region。
+  3. 上方命令的 `-testLanguage <Lang> -testRegion <Region>`（每 run 單一 locale，與 `for loc in …` 迴圈天然相容）。
+- 機制 = 讓 host app 進程以 `-AppleLanguages (<lang>) -AppleLocale <locale>` 啟動（fastlane snapshot 同款）；等同 Android host `attachBaseContext` 的 `Locale.setDefault`（[android.md](android.md)），兩平台對稱。
+- 與 `BundleLocalizationSwizzler` **互補不衝突**：swizzler 管 LocalizationKit app 字串、本項管 `Locale.current` formatter，兩者到位才完整忠真。
+- 驗證：跑完首張日期畫面（如月份標題/星期列）須確認已顯目標語、再信任後續 verdict；仍顯模擬器 locale → 該畫面 `locale-unverifiable`、不在 after 圖判 false-clean。
 
 #### 取回 baseline（呼叫者做，test 不碰落點）
 

@@ -284,6 +284,7 @@ T2 vs R 的判準（最關鍵）：問「修完截圖除了缺陷處，其餘看
 
 - 典型陷阱（Compose）：靠父 `horizontalAlignment` 置中的 wrap-content `Text`，放寬 maxLines 後第 2 行依 `Text` 自身 `textAlign`（預設 `Start`）靠左 → 須同時加 `textAlign = TextAlign.Center`（通常配 `Modifier.fillMaxWidth()`），對既有單行 consumer 視覺等價、多行才正確。SwiftUI 同理：frame `alignment` ≠ `.multilineTextAlignment`。
 - 此類修法的 AC 必含一條「該元素多行後維持原對齊／置中／視覺處理」（見 §4）；audit 偵測到「靠父層 alignment 置中、元素無自身 textAlign」結構時，主動把「一換行就破置中」列為風險寫進 AC。
+- **對「有背景/邊框/固定外觀」的控制項（按鈕/膠囊/卡片/固定高 cell）→ 還必須同時接住背景容器垂直容納**：背景要隨內容長高把多行文字完整包住、上下有內距、pill 不退化成貼字矩形、鄰居不被推擠；否則是把「水平截斷」換成「垂直爆框」，同屬假修復。雙平台機制（UIKit minHeight+contentInsets+重算 cornerRadius／SwiftUI fixedSize+minHeight／XML wrap_content+minHeight／Compose heightIn+contentPadding）見 [03-fix](03-fix.md)，verify 量化見 [04-verify](04-verify.md) Step 3.5。固定外觀控制項的 overflow 強預設順位 1 縮字串；跨兄弟畫面共用同一字串 key 必採同一修法。
 
 ## 3.5 截圖可信度：snapshot ≠ 真機時，誠實標 unverifiable，不准當 false-positive
 

@@ -1,7 +1,7 @@
 # screen-mender 修復報告 template
 
 > Phase 3 終止時（integrator 彙整完單一 MR 後），orchestrator 依本 template 產一份**持久**報告，落 `<repo>/.screen-mender/reports/run-<run_id>.md`。
-> 資料：畫面層取自各 runner return（`unified_id` / `status` / `fixed[]` / `residual_visible[]` / `escalation`），MR 取自 integrator return（**整 run 唯一** `mr_url` + `demoted[]`）；orchestrator 不另開截圖·diff。
+> 資料：畫面層取自各 runner return（`unified_id` / `status` / `fixed[]` / `residual_visible[]` / `escalation`），MR 與整合層結果取自 integrator return（**整 run 唯一** `mr_url` + `demoted[]` + `dropped[]`）；orchestrator 不另開截圖·diff。
 
 ## 填寫規則
 
@@ -11,8 +11,9 @@
 - **修復元件（類別/函式）**：取自 runner `fixed[]` 的 file:line 反推——真正被改的 composable/類別函式名 + 檔名（如 `LoginScreen（LoginScreen.kt）`）；一畫面動到多個元件就並列。未能修復段無此欄。
 - **修復項目**：每條 `fixed` 壓成一句話，只講「修了什麼缺陷」；file:line / tier / 退讓解細節留 MR，不進報告。
 - integrator `demoted[]`（因彙整衝突解被降 partially-fixed 的畫面）→ 移入部分修復段並註記「彙整衝突降級」。
+- integrator `dropped[]`（Tier-2 整合層重修達上限、踢出本 MR 的畫面）→ 列未能修復段、狀態 `integration-dropped`、原因「整合層 review 未過、下次 run 重撿」。
 - 部分修復**必列殘留可見缺陷段**（沿用殘留可見鐵則，不可省、不可淡化）。
-- 未能修復段涵蓋 `locked` / `defect` / `stuck` / `harness-missing`，原因取 `escalation` 一句摘要。
+- 未能修復段涵蓋 `locked` / `defect` / `stuck` / `harness-missing` / `integration-dropped`，原因取 `escalation`／drop reason 一句摘要。
 - 不寫任何 `.audit`；本報告是唯一持久產物，run 結束 teardown 不刪 `reports/`。
 
 ---
@@ -52,5 +53,5 @@
 ## ⛔ 未能修復（<c>）
 
 ### <unified_id>
-- 狀態：<locked|defect|stuck|harness-missing>
-- 原因：<escalation 一句摘要>
+- 狀態：<locked|defect|stuck|harness-missing|integration-dropped>
+- 原因：<escalation／drop reason 一句摘要>

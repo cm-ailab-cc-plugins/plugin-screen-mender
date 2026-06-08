@@ -19,6 +19,7 @@ model: sonnet
 - `device_serial`：任一已備妥裝置（衝突畫面重跑 snapshot test 用）
 - `feature_branch_prefix`：per-screen branch 命名前綴
 - `screens[]`：成功修復畫面的 `<run_dir>/<unified_id>/` 清單（status ∈ {fully-fixed, partially-fixed}）；每個含 `meta.json` / `mr-section.md` / before·after PNG
+- `integration_refix_max_rounds`（預設 2）、`refix_round`（本次 resume 的整合層輪次，初次 0）
 
 缺 `lane_worktrees` / `base_branch` / `run_id` → return error。
 `screens` 空 → 不開 MR，return `no-changes`。
@@ -31,12 +32,14 @@ model: sonnet
 
 - 全部程序在 `${CLAUDE_PLUGIN_ROOT}/agents/references/06-integrate.md`：**Read 它當你的詳細指令逐步執行**。
 - 流程概要（細節以 06-integrate 為準）：
-  1. 取暖 worktree → 從 `base_branch` 切 `screen-mender-run-<run_id>` integration branch。
+  1. 取暖 worktree → 從 `origin/<base_branch>` 切 `screen-mender-run-<run_id>` integration branch。
   2. 依序 cherry-pick 每個成功畫面（一畫面一 commit）；解共享字串衝突。
-  3. build 一次 + 只對衝突畫面重跑 snapshot test。
+  3. build 一次驗證。
+  3.5. **Tier-2 整合層 review（只審 merge 動到的 delta）**：算 `affected_screens`（衝突畫面 ∪ 共用檔重疊畫面）→ 重跑 + 視覺比對 + focused diff 審 → 衝突解問題自己重解、畫面修復缺陷退回（`needs_refix`）。**非 affected 的畫面不重審**（與已過 tier-1 的 per-screen branch 逐字相同）。
   4. 串 aggregate MR description（每畫面一 `<details>` 收合段 + 內嵌 before/after）。
   5. push + 開**單一** MR + 全修復且無殘留才轉 ready。
-  - `dry_run=true`：步驟 1–4 照跑，不 push/不開 MR，產 `change.patch` + `proposed-mr.md` 落 `run_dir`。
+  - **Tier-2 退回**：有 `needs_refix` → 先不 push，return `status=needs-refix` 交 orchestrator 重派 runner（你不能 spawn）；達 `integration_refix_max_rounds` 仍未過 → 把該畫面 `dropped` 踢出、其餘照常成 MR。
+  - `dry_run=true`：步驟 1–4 照跑（含 Tier-2），不 push/不開 MR，產 `change.patch` + `proposed-mr.md` 落 `run_dir`。
 
 ## 跨階段規範
 
@@ -48,15 +51,19 @@ model: sonnet
 ## 回報（final message = 給 orchestrator，精簡）
 
 ```
-mr_url:            # dry_run → <run_dir>/proposed-mr.md 路徑；no-changes → none
+status: done | needs-refix | no-changes
+mr_url:            # status=done 才有；dry_run → <run_dir>/proposed-mr.md 路徑；no-changes/needs-refix → none
 integrated: [unified_id…]            # 成功併入單一 MR 的畫面
+needs_refix: [{ unified_id, branch, findings[] }]   # Tier-2 退回重修（status=needs-refix 時，交 orchestrator 重派 runner）
+dropped: [unified_id → reason]       # 達 integration_refix_max_rounds 仍未過、踢出本 MR 的畫面
+demoted: [unified_id → reason]       # 因衝突解/合併被降 partially-fixed 的畫面
 conflict_screens: [unified_id…]      # 發生過衝突解、已重驗
-demoted: [unified_id → reason]       # 因衝突解被降 partially-fixed 的畫面
-timing: { integrate_s, cherrypick_n, conflict_n, build_runs }
+timing: { integrate_s, cherrypick_n, conflict_n, build_runs, refix_rounds }
 escalation: <build 連敗 3 次 / 無法解的衝突 / push 失敗，否則空>
 ```
 
 ## self-abort（無 watchdog）
 
 - build 同錯連 3 次 → 填 `escalation`（log 摘要）後 return，不無限試。
-- 某畫面 cherry-pick 衝突無法乾淨解 → 跳過該畫面（不併入）、列 `escalation`，續其餘畫面；不阻塞整個彙整。
+- 某畫面 cherry-pick 衝突無法乾淨解 → 跳過該畫面（不併入）、列 `escalation`/`dropped`，續其餘畫面；不阻塞整個彙整。
+- Tier-2 退回不是 self-abort：return `status=needs-refix` 由 orchestrator 中介重修（你不能 spawn runner）；達 `integration_refix_max_rounds` 才把該畫面 `dropped`。

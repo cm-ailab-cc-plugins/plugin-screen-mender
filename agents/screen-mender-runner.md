@@ -23,12 +23,13 @@ model: sonnet
 - `worktree`：本 lane 常駐 worktree 絕對路徑（orchestrator 已切好 `branch`）
 - `branch`、`feature_branch_prefix`、`repo_canonical_path`（紅線用，禁碰）
 - `device_serial`：本 lane 獨佔的 emulator/simulator
-- `base_branch`、`mr_tool`（glab|gh）
+- `base_branch`（diff 基準；你不 push/不開 MR，故不需 `mr_tool`——那是 integrator 的）
 - `capture_locale`、`extra_audit_locales`（預設 `[]`）
 - `string_fix_policy`：`local-resource` | `disabled`
 - `dry_run`（預設 false）
 - `ui_framework_pref`：`compose` | `swiftui`
 - `canary`（預設 false）：canary 探針模式。`true` 時**只跑到 capture 過 harness 閘為止**就早退回 `canary-ok`（不進偵測/修復/MR），供 orchestrator 在 fan-out 前確認 harness 能出圖；capture 未過則照常回 `harness-missing`/`locked`/`defect`。
+- `refix`（預設空）：**整合層退回重修模式**。非空時 = `{ findings[], round }`：integrator 的 Tier-2 review 在整合後發現本畫面有問題（findings 一行一條，含問題 + 期望），退回你在**既有 `branch`** 上重修。此模式跳過 capture/audit（截圖重拍重用即可），直接把 `findings` 當 kept 進 fix→審查驗證→定稿（**amend 既有單一 commit**，不新增 commit），再交出更新後的 `mr-section.md`。詳見〈控制流程〉。
 - `iterate_max`（預設 2）、`internal_loop_max_rounds`（預設 3）
 - `snapshot_test_cmd` / `build_cmd`：選用；若該畫面已有 test、orchestrator 可預填，否則 stage 1 由 add-snapshot 回報後建立
 - `neighborhood_test_cmds`：選用（鄰域 regression）
@@ -39,6 +40,8 @@ model: sonnet
 
 > **先載入 Task 工具**：`TaskCreate`／`TaskUpdate` 在你的工具白名單內，但屬 **deferred tool**（schema 未預載，直接呼叫會 InputValidationError）。開場第一件事先跑 `ToolSearch` `select:TaskCreate,TaskUpdate` 載入 schema，再使用。
 > 萬一該環境查無此二工具 → 不阻塞流程：改在 context 內自行追蹤這 5 格進度（一樣逐格 Read 階段檔、逐格推進），其餘行為不變。
+
+> **refix 模式例外**（prompt `refix` 非空）：TODO 縮成 3 格（修復跑版／審查與驗證／完成階段），跳過產截圖·偵測，詳見〈控制流程〉refix 段。以下 5 格為正常模式。
 
 載入後用 **TaskCreate** 建一份固定 5 格 TODO（subject 如下）：
 - [ ] 產生截圖
@@ -84,6 +87,18 @@ model: sonnet
 
 - 線性執行，但有早退與有界迴圈。
 - 以下將說明各個階段的控制流程。
+
+### refix 模式（整合層退回重修，最先判）
+
+條件：prompt `refix` 非空（integrator Tier-2 review 退回本畫面）。
+
+- worktree 已切在本畫面既有 `branch`（你原本的單一 commit 在上面）。
+- TODO 縮成 3 格：修復跑版（吃 `refix.findings` 當 kept）→ 審查與驗證 → 完成階段。
+  - 跳過產截圖/偵測：截圖按需重拍重用（fix/verify 要比對 after 時才拍），不重跑 audit。
+- 修復：把 `refix.findings` 每條當一條 kept 缺陷修（findings 已含「問題 + 期望」，等同 AC）；其餘紀律同 fix 階段（只改 findings 指的範圍、守視覺等價）。
+- 審查與驗證：照 stage 4 換審查者視角驗（含同畫面視覺等價 + 不得回退原本已修好的缺陷）。
+- 完成：**amend 既有單一 commit**（`git commit --amend`，不新增 commit，維持一畫面一 commit），重寫 `mr-section.md`，return（status 照重修結果重算）。
+- 有界：refix 內部 fix↔verify 仍受 `internal_loop_max_rounds`；超過 → 填 `escalation` return（integrator 據此踢出該畫面）。
 
 ### capture 過閘（canary 模式早退）
 

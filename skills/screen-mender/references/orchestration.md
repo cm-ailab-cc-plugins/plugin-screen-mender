@@ -165,10 +165,26 @@ orchestrator 傳給 integrator 的 prompt 欄位（已知值轉傳，見 [`06-in
 - `run_dir`、`run_id`、`platform`、`base_branch`、`mr_tool`、`capture_locale`、`string_fix_policy`、`dry_run`
 - `lane_worktrees[]`（取一條暖的當 integration worktree）、`device_serial`、`feature_branch_prefix`
 - `screens[]` = 各 runner 交出 status ∈ {fully-fixed, partially-fixed} 的 `<run_dir>/<unified_id>/`（含 `meta.json`/`mr-section.md`/before·after）
+- `integration_refix_max_rounds`（預設 2）、`refix_round`（resume 時遞增，初次 0）
 
-integrator 程序（細節在 06-integrate）：暖 worktree 切 integration branch → 依序 cherry-pick（一畫面一 commit）→ 解共享字串衝突 → build 一次 + 只對衝突畫面重跑 snapshot test → 串 aggregate description（每畫面一收合段 + 內嵌 before/after）→ push 開單一 MR。
+integrator 程序（細節在 06-integrate）：暖 worktree 切 integration branch → 依序 cherry-pick（一畫面一 commit）→ 解共享字串衝突 → build 驗證 → **Tier-2 整合層 review（只審 merge 動到的 delta）** → 串 aggregate description（每畫面一收合段 + 內嵌 before/after）→ push 開單一 MR。
 
 `screens` 空（無任何成功畫面）→ integrator 回 `no-changes`、不開 MR。
+
+### §5.1.1 兩層 review + 退回重修
+
+修法正確性靠**兩層**把關，互不取代：
+
+- **Tier 1（逐畫面，runner stage 4 已存在）**：每畫面在自己 branch 上自審（scope/redesign/AC/視覺等價/殘留/鄰域 regression），`NEEDS_CHANGES` 退回自己的 fix 階段（warm、有界 `internal_loop_max_rounds`）。這是修法正確性的**主關**，context 完整（issues/AC/before·after）。
+- **Tier 2（整合層，integrator stage 3.5 新增）**：**只審 merge 才出現的風險**——衝突解品質 + 跨畫面共用檔/元件互踩；非 affected 畫面不重審（與已過 tier-1 的 branch 逐字相同）。
+
+Tier-2 退回（developer 重修，orchestrator 中介——**integrator 無 `Agent` 工具、不能 spawn runner**）：
+
+1. integrator 回 `status=needs-refix` + `needs_refix:[{unified_id, branch, findings}]`（先不 push）。
+2. orchestrator 對每個 `needs_refix` 畫面重派其 **runner**（帶 `refix={findings, round}`；在既有 branch 上跳過 capture/audit、直接修 findings→驗→**amend 單一 commit**）。
+3. 全部重修 runner 回來後，orchestrator **重 spawn integrator**（`refix_round+1`）：重 cherry-pick 更新後的畫面、重跑 build + Tier-2。
+4. 有界：`refix_round` 達 `integration_refix_max_rounds`（預設 2）仍未過 → integrator 把該畫面 `dropped` 踢出本 MR、其餘照常成 MR；被踢畫面下次 run 由 audit 自然重撿。
+   - 衝突解本身的問題（無特定畫面）→ integrator 自己重解，不佔重修輪。
 
 ### §5.2 冪等（run 級）
 

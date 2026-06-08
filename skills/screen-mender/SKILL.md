@@ -66,9 +66,17 @@ description: >-
 - 每 lane 獨佔裝置 → 無跨-lane 裝置鎖（lane 內 runner 的 capture／verify 本就序列，不需互斥鎖）
 - 細節見 orchestration.md §3–4。
 
+### 兩層自動 review（人工 PR 前先機審）
+
+單一大 MR 人眼難全審，故修法正確性靠兩層機器 review 把關，各審各的、退回重修：
+
+- **Tier 1（逐畫面，已存在）**：runner stage 4 自審單畫面 diff（scope/redesign/AC/視覺等價/殘留/鄰域），退回自己 fix（warm、有界）。修法正確性主關。
+- **Tier 2（整合層，新增）**：integrator stage 3.5 **只審 merge 才出現的風險**（衝突解品質 + 跨畫面共用檔互踩），退回該畫面 runner 重修（orchestrator 中介、有界 `integration_refix_max_rounds`，解不掉踢出本 MR）。
+- 兩層的 review 單位都小（tier-1 審單畫面、tier-2 只審跨畫面交集 delta），不重蹈「一個 agent 啃整包大 diff」。細節見 orchestration §5.1.1。
+
 ### 合併 PR 是唯一人工點
 
-- 偵測→修→彙整→開 MR 全自動，不設修前 issue 閘
+- 偵測→修→（兩層機審）→彙整→開 MR 全自動，不設修前 issue 閘
 - 使用者只在**一個** MR 上審 diff + 前後截圖（MR 內一畫面一 commit，可逐 commit／逐收合段審），批准／合併一次。
 
 ### production 只在修復階段動
@@ -195,6 +203,7 @@ Reference: orchestration.md §3–4
     - 詳情見 runner 規則書 [`issue-schemas`](../../agents/references/issue-schemas.md) §2/§3。
 - `extra_audit_locales`：`[]` — opt-in 多語系翻譯正確性檢查。
 - `neighborhood_regression`：`true`。
+- `integration_refix_max_rounds`：`2` — 整合層（Tier-2）退回重修的最大輪數；達上限仍未過的畫面踢出本 MR、下次 run 重撿（見 Phase 3.0.1）。
 - `dry_run`：`false`
   - 此為試跑模式
   - 照常跑 capture→audit→fix→review→verify→定稿（local commit），run 尾照常 spawn integrator 彙整（cherry-pick + build 驗證）但**不 push、不開 MR**
@@ -289,22 +298,35 @@ orchestrator 已知值轉傳，runner 不讀設定檔
 
 所有 lane 收工 → **先 spawn 一個 integrator 彙整單一 MR，再回報 final summary**。
 
-#### 3.0 spawn integrator（彙整單一 MR）
+#### 3.0 spawn integrator（彙整單一 MR + 兩層 review 的 Tier-2）
 
 - 所有 lane 收工後（worktree **先別回收**，integrator 要重用暖 worktree），spawn 一個 [`screen-mender-integrator`](../../agents/screen-mender-integrator.md)（`run_in_background`），傳入 prompt 欄位（見 orchestration §5.1）：
   - `run_dir`、`run_id`、`platform`、`base_branch`、`mr_tool`、`capture_locale`、`string_fix_policy`、`dry_run`
   - `lane_worktrees[]`、`device_serial`（任一備妥裝置）、`feature_branch_prefix`
   - `screens[]` = Phase 2 累積的 `fully-fixed`／`partially-fixed` 畫面 `<run_dir>/<unified_id>/` 清單
+  - `integration_refix_max_rounds`（預設 2）、`refix_round=0`
 - `screens[]` 空（無任何成功畫面）→ 不 spawn integrator，final summary 標 `nothing-to-fix`。
-- 等 integrator 完成通知（事件驅動），取其回傳 `mr_url`（dry-run → `proposed-mr.md` 路徑）／`integrated[]`／`demoted[]`／`escalation`：
-  - `escalation` 非空（build 連敗／無法解衝突／push 失敗）→ 打斷使用者、附卡點。
-  - `demoted[]`（因衝突解被降 partially-fixed 的畫面）→ final summary 據此修正該畫面狀態。
+- 等 integrator 完成通知（事件驅動），依 `status` 分流：
+  - `status=needs-refix`（Tier-2 退回重修，**integrator 不能自己 spawn runner**）→ 走 §3.0.1 退回重修迴圈。
+  - `status=done` → 取 `mr_url`（dry-run → `proposed-mr.md` 路徑）／`integrated[]`／`demoted[]`／`dropped[]`／`escalation`，進 §3.1。
+    - `escalation` 非空（build 連敗／無法解衝突／push 失敗）→ 打斷使用者、附卡點。
+    - `demoted[]`（因衝突解/合併被降 partially-fixed）／`dropped[]`（達重修上限被踢出本 MR）→ final summary 據此修正該畫面狀態。
+  - `status=no-changes` → final summary 標 `nothing-to-fix`。
+
+#### 3.0.1 Tier-2 退回重修迴圈（有界，orchestrator 中介）
+
+integrator 回 `needs_refix:[{unified_id, branch, findings}]` 時：
+
+1. 對每個 `needs_refix` 畫面，重派其 **runner**（背景），帶 `refix={findings, round}`、原 `worktree`／`branch`／`device_serial`／`model: <runner_model>`：runner 跳過 capture/audit，直接修 findings→審查驗證→**amend 單一 commit**、重寫 `mr-section.md`。
+2. 全部重修 runner 回來 → **重 spawn integrator**（`refix_round+1`，其餘 prompt 同上）：重 cherry-pick 更新後畫面、重跑 build + Tier-2。
+3. 反覆直到 integrator 回 `status=done`；達 `integration_refix_max_rounds` 仍有未過畫面 → integrator 把它們 `dropped` 踢出本 MR、其餘照常成 MR、進 §3.1。
+4. 衝突解本身的問題由 integrator 自己重解，不佔重修輪、不回到此迴圈。
 
 #### 3.1 final summary（一個 MR 連結）
 
 - 呈現：口頭／對話呈現 + **依 [`references/report-template.md`](references/report-template.md) 產一份持久報告**落 `<repo>/.screen-mender/reports/run-<run_id>.md`（非 ephemeral、teardown 不刪、不進版控）；不留 .audit。報告依修復程度分三段（完全修復／部分修復／未能修復；clean 不列），每畫面列 unified_id、修復項目（條列、一句一條），**頂部列整 run 唯一 MR 連結**（`dry_run` → `proposed-mr.md` 路徑），部分修復必列殘留可見缺陷。
 - 結束告知：final summary 收尾**必明確告訴使用者**（1）整 run 唯一 MR 連結、（2）持久報告路徑（`報告已產出：<repo>/.screen-mender/reports/run-<run_id>.md`）。
-- 內容：各畫面狀態（`fully-fixed`／`partially-fixed (n fixed, m deferred-visible)`／`clean`／locked／defect／stuck）；**MR 連結整 run 只有一個**（在報告頂部，非每畫面一個）；`dry_run` → 改列 `<run_dir>/proposed-mr.md` 路徑。`partially-fixed` 要列殘留可見缺陷與原因（`needs-design`／`deferred-by-run-config`）。
+- 內容：各畫面狀態（`fully-fixed`／`partially-fixed (n fixed, m deferred-visible)`／`clean`／locked／defect／stuck／**integration-dropped**）；**MR 連結整 run 只有一個**（在報告頂部，非每畫面一個）；`dry_run` → 改列 `<run_dir>/proposed-mr.md` 路徑。`partially-fixed` 要列殘留可見缺陷與原因（`needs-design`／`deferred-by-run-config`）；`integration-dropped`（Tier-2 重修達上限被踢出）列「未進本 MR、下次 run 重撿」。
 - 觀測（每畫面）：附一行 compact 耗時 `capture <a>s · audit <b>s · fix <c>s/<k> builds (<r> rounds) · verify <d>s`（資料來自各 runner summary 的 `timing`），並點出本 run 最慢階段與 build 次數最高的畫面（=最該優化處）；`trace=true` → 改出完整逐階段 breakdown（見 [`orchestration`](references/orchestration.md) §7）。
 - capture 保真度旗標：列出本 run 有 `font-fidelity-degraded`／`representative-render`／`capture-nondeterministic`／`locale-unverifiable` 的畫面（這類「乾淨」或「已修」可能是 capture 不忠於真機造成的假象；`locale-unverifiable` 另列「需真機抽驗」清單）。
 - run-config 揭露：明示本 run 的 `string_fix_policy` 與 `dry_run`；若 `string_fix_policy` 關閉了「縮文案」這條修法，列出因此 `deferred-by-run-config` 的缺陷。`dry_run` 時明示「本 run 未開 MR，整 run 合併產物在 `<run_dir>`」。
@@ -332,7 +354,7 @@ main session 輸出嚴格限縮在 milestone：
 
 1. 開頭一句：「開始 screen-mender；待檢查畫面 N 個（全部／指定）；runner model = `<runner_model>`；修完彙整成 1 個 MR。」（非預設 `sonnet` 時尤其要點明，讓使用者知道用量／品質取捨）
 2. 每畫面 runner 回 summary 後一句（Phase 2）：已修復並驗證 + 修了幾條（**此時尚未開 MR**）；有殘留可見缺陷時標「部分修復」並點出殘留（不得單用「已修」）。
-3. run 尾 integrator 回報後一句（Phase 3）：「已彙整成 1 個 MR（!x）：N 畫面，X 全修 / Y 部分。」
+3. run 尾 integrator 回報後一句（Phase 3）：「已彙整成 1 個 MR（!x）：N 畫面，X 全修 / Y 部分。」（若 Tier-2 退回重修過，可順帶一句「整合層退回 K 畫面重修、Z 畫面因解不掉踢出下次重撿」）
 4. 終止一份 final summary，並告知唯一 MR 連結 + 持久報告路徑（`.screen-mender/reports/run-<run_id>.md`）供查看。
 
 只有以下情況才打斷使用者（一律由 runner／integrator return 的 `escalation` 帶上來）：
@@ -355,4 +377,5 @@ main session 輸出嚴格限縮在 milestone：
 - manifest 列舉失敗 → 上報「screen-list 未產出 `screen-list.json`」。
 - 某畫面卡 locked／defect／stuck → 不阻塞整 run，列入 summary backlog、續下一畫面（不進彙整）。
 - 彙整失敗：integrator build 連敗／cherry-pick 衝突無法乾淨解 → 該畫面跳過不併入（列 `escalation`），其餘畫面照常彙整成 MR；push 失敗 → 打斷使用者、產物保在 run_dir 供手動處理。
+- Tier-2 退回重修達上限：某畫面整合層重修 `integration_refix_max_rounds` 輪仍未過 → 踢出本 MR（`dropped`）、不阻塞其餘畫面成 MR，final summary 列為「整合層未過、下次 run 重撿」。
 - 全部畫面 locked／defect／clean、零可修（`screens[]` 空）→ 不 spawn integrator、final summary 標 `nothing-to-fix`。

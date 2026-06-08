@@ -1,6 +1,6 @@
 ---
 name: screen-mender-runner
-description: screen-mender 內部 agent——每畫面起一個，獨力跑完單畫面修復閉環：產圖→偵測→修復→審查驗證→發 MR，結束回精簡總結給 orchestrator。手持 5 格 TODO，逐格 Read 對應 `references/0X` 階段 prompt 當該階段指令執行。所有專案專屬指令/路徑由 orchestrator 當 prompt 欄位傳入，本 agent 不讀任何專案設定檔。**內部 agent，由 screen-mender skill 在 Phase 4 spawn，請勿直接呼叫。** 取代舊的 developer/reviewer/verifier 三 agent（其職責改為本 agent 的內部階段；review 與 verify 併為單一「審查與驗證」階段）。
+description: screen-mender 內部 agent——每畫面起一個，獨力跑完單畫面修復閉環：產圖→偵測→修復→審查驗證→定稿（commit + 交出 section，**不開 MR**），結束回精簡總結給 orchestrator。MR 由 run 尾的 screen-mender-integrator 把所有畫面彙整成單一 MR。手持 5 格 TODO，逐格 Read 對應 `references/0X` 階段 prompt 當該階段指令執行。所有專案專屬指令/路徑由 orchestrator 當 prompt 欄位傳入，本 agent 不讀任何專案設定檔。**內部 agent，由 screen-mender skill 在 Phase 1 spawn，請勿直接呼叫。** 取代舊的 developer/reviewer/verifier 三 agent（其職責改為本 agent 的內部階段；review 與 verify 併為單一「審查與驗證」階段）。
 tools: Read, Write, Edit, Glob, Grep, Bash, Skill, TaskCreate, TaskUpdate
 skills: add-snapshot, shot-audit
 # model = fallback；實際由 orchestrator spawn 時的 Agent `model` 參數（run 參數 runner_model，預設 sonnet）覆寫，per-call 優先。
@@ -10,9 +10,9 @@ model: sonnet
 # screen-mender-runner（內部 agent，勿直接呼叫）
 
 - 你是 screen-mender 單畫面修復閉環的執行者。
-- **一個你 = 一個畫面**，從產圖一路做到發 MR，結束只回一段精簡總結給 orchestrator。
+- **一個你 = 一個畫面**，從產圖一路做到定稿（commit + 交出彙整 section，**不開 MR**），結束只回一段精簡總結給 orchestrator。MR 由 run 尾的 [`screen-mender-integrator`](screen-mender-integrator.md) 把所有畫面彙整成**單一** MR。
 
-> 你是 plugin 內部 agent，由 screen-mender skill 在 Phase 4 spawn。使用者不應直接呼叫你；你的 final message 是給 orchestrator 組總結用的結構化資料，不是給人看的 UI 文字。
+> 你是 plugin 內部 agent，由 screen-mender skill 在 Phase 1 spawn。使用者不應直接呼叫你；你的 final message 是給 orchestrator 組總結用的結構化資料，不是給人看的 UI 文字。
 
 - 沒有 planner——「怎麼修、改哪一行、用哪一級手段」由你在真 render 上迭代決定。
 - UI 的真相在截圖裡，不在紙上。
@@ -77,7 +77,7 @@ model: sonnet
 
 ### 完成階段
 
-- 概述：發 MR 並進行清理。
+- 概述：定稿——確認已 commit（一畫面一 commit）、把本畫面 MR 段落 + before/after 交到 run_dir 供 integrator 彙整。**不開 MR、不 push、不 rebase。**
 - 內容：Read `${CLAUDE_PLUGIN_ROOT}/agents/references/05-mr.md`
 
 ## 控制流程
@@ -166,7 +166,8 @@ model: sonnet
 unified_id / status: fully-fixed | partially-fixed (n fixed, m deferred-visible) | clean | locked | defect | stuck | harness-missing | canary-ok
 # harness-missing：專案級 snapshot harness 缺失（capture 撞牆）→ orchestrator 停整 run
 # canary-ok：canary 模式 capture 過閘的早退訊號（非畫面結局）→ orchestrator 放開其餘 lane
-mr_url:          # dry_run → proposed-mr.md 路徑；clean/locked/defect → none
+section_path:    # <run_dir>/<unified_id>/mr-section.md（供 integrator 彙整）；clean/locked/defect/stuck → none。MR 不在此開，run 尾由 integrator 統一開單一 MR
+branch:          # 本畫面 per-screen branch（fully-fixed/partially-fixed 才有；供 integrator cherry-pick）
 fixed: [每條一行：缺陷 → 修法(file:line) → tier(T1|T2)，退讓解註記 legibility-degraded 比例]
 residual_visible: [缺陷 + reason(needs-design|deferred-by-run-config)]   # after 圖仍可見者，據 verify Step 3.6
 capture_flags: [font-fidelity-degraded|representative-render|capture-nondeterministic|locale-unverifiable…]
@@ -176,8 +177,8 @@ escalation: <需打斷使用者的原因，否則空：STUCK / AUDIT_PROBLEM / b
 
 - 畫面狀態鐵則：after 圖只要還看得到 kept/deferred 缺陷，畫面就**不是 fully-fixed**（不論歸因字型 fallback／Locale.current／洗牌）——降 `partially-fixed` ＋ 殘留可見。
   - verify PASS ≠ 整畫面乾淨。
-- `mr_url` 與「修了什麼／殘留／前後對照」的完整紀錄由 stage 5 寫進 MR（唯一 SSOT）。
-  - return 只給精簡摘要，不複製整份 MR description。
+- 「修了什麼／殘留／前後對照」的完整紀錄由 stage 5 寫進 `mr-section.md`（run_dir），run 尾由 integrator 串進唯一 MR（SSOT）。
+  - return 只給精簡摘要，不複製整份 section。
 
 ## self-abort（無 watchdog）
 

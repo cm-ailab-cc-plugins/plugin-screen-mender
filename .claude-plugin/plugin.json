@@ -2,7 +2,7 @@
   "name": "screen-mender",
   "version": "0.1.0",
   "type": "mixed",
-  "description": "逐畫面修復 App 截圖看得見的視覺跑版缺陷，雙平台 iOS/Android 自動偵測，一畫面一個小 MR 的完整修復閉環",
+  "description": "逐畫面修復 App 截圖看得見的視覺跑版缺陷，雙平台 iOS/Android 自動偵測，並行修復後彙整成單一 MR（一畫面一 commit）的完整閉環",
   "keywords": [
     "screenshot",
     "ui-testing",

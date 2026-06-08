@@ -1,24 +1,25 @@
 ---
 name: screen-mender
 description: >-
-  逐畫面修復「截圖看得見的視覺缺陷」，雙平台（iOS / Android 由 repo 檔案特徵自動偵測、零設定檔）。以單一畫面為原子單位跑完整閉環：每畫面派一個 runner agent，獨力跑「確保截圖 test → 出截圖 → 偵測缺陷 + triage + 附 AC → 修復→審查驗證 → 發一個小 MR（含 before/after 截圖）」，回一段精簡 summary → 下一畫面。一個 MR = 一個畫面被完整修復；多畫面靠 N 條 lane（各獨佔一台裝置）work-stealing 並行。唯一人工點 = PR 把關。
+  逐畫面修復「截圖看得見的視覺缺陷」，雙平台（iOS / Android 由 repo 檔案特徵自動偵測、零設定檔）。以單一畫面為原子修復單位跑閉環：每畫面派一個 runner agent，獨力跑「確保截圖 test → 出截圖 → 偵測缺陷 + triage + 附 AC → 修復→審查驗證 → 定稿（commit + 交出段落，不開 MR）」，回精簡 summary → 下一畫面。**run 尾把所有畫面彙整成單一 MR**（MR 內一畫面一 commit + 各畫面 before/after），讓使用者只 review／合併一次。多畫面靠 N 條 lane（各獨佔一台裝置）work-stealing 並行。唯一人工點 = PR 把關。
 
-  觸發：「跑 screen-mender」「逐畫面修視覺跑版」「一畫面一個小 MR 修 UI」「把這個 App 的畫面一個個修好」；只在明確要求「逐畫面修復閉環」時觸發。
+  觸發：「跑 screen-mender」「逐畫面修視覺跑版」「把這個 App 的畫面一個個修好並收成一個 MR」「批次修 UI 跑版」；只在明確要求「逐畫面修復閉環」時觸發。
 ---
 
 # screen-mender
 
-逐畫面修復「截圖看得見的視覺缺陷」。一個畫面 = 一個原子修復單元 = 一個小 MR；雙平台、零設定、無狀態；唯一人工點是 PR 把關。
+逐畫面修復「截圖看得見的視覺缺陷」。一個畫面 = 一個原子修復單元；**整 run 收成單一 MR**（MR 內一畫面一 commit）；雙平台、零設定、無狀態；唯一人工點是 PR 把關。
 
 ## 核心模型
 
-每個畫面派一個 runner 獨立跑完整閉環，一個畫面對應一個 MR；多畫面靠 N 條 lane（各佔一台裝置）work-stealing 並行；發 MR 即往下、不追 merge、不被人工 merge 速度鎖死。
+每個畫面派一個 runner 獨立跑完整修復閉環，但**不開 MR**——只 local commit + 交出該畫面的 MR 段落；多畫面靠 N 條 lane（各佔一台裝置）work-stealing 並行。run 尾派一個 `screen-mender-integrator` 把所有成功畫面彙整成**一條 integration branch + 一個 MR**（一畫面一 commit），使用者只 review／合併一次。
 
 ```
 從共享 queue（全部目標畫面，或使用者指定的子集）原子認領下一個畫面
   → 在本 lane 常駐 worktree checkout 新 branch，同一輪 spawn 一個 screen-mender-runner（背景）
-  → runner 獨力跑完整閉環：產圖（C1–C5 閘）→ 偵測 + triage + 附 AC → 修復→審查驗證（真 render 上有界迭代）→ 發一個小 MR（修了什麼 + before/after 全寫 MR）
-  → runner 回一段精簡 summary；orchestrator 通知使用者一句、釋放 lane，立刻認領下一個畫面（不追 merge）↺
+  → runner 獨力跑完整閉環：產圖（C1–C5 閘）→ 偵測 + triage + 附 AC → 修復→審查驗證（真 render 上有界迭代）→ 定稿（local commit + 交出 mr-section.md，不開 MR）
+  → runner 回精簡 summary；orchestrator 通知使用者一句、釋放 lane，立刻認領下一個畫面 ↺
+全部 lane 收工 → spawn 一個 screen-mender-integrator：cherry-pick 全部畫面（一畫面一 commit）→ 解共享字串衝突 → build + 衝突畫面重跑 → 串成 aggregate description → push 開**單一** MR
 ```
 
 ## 運作原則
@@ -40,21 +41,22 @@ description: >-
 - 不留任何**被 git 追蹤的**狀態檔；暫存走 gitignored 的 `.screen-mender/`（不進版控、run 結束即刪），idempotency 不靠讀回本地檔。
 - 「這畫面修過沒」每次 live 查 git host（merged／open MR）
 
-### MR 是唯一 SSOT
-- 修了什麼、before/after 截圖、考慮過但不修的理由，全寫在 MR。
+### 單一 MR 是唯一 SSOT
+- 整 run 一個 MR：修了什麼、before/after 截圖、考慮過但不修的理由，全寫在這份 MR（每畫面一收合段 + 一 commit）。
+- per-screen runner 不開 MR，只交出該畫面的 `mr-section.md`；run 尾 integrator 串成單一 MR。
 - run 期間暫存放 ephemeral run 目錄 `<repo>/.screen-mender/runs/<run_id>/`（gitignored、不進版控），run 結束即刪。
 
 ### 不重造輪子
 - orchestrator 自己用：screen-list（畫面列舉）。
 - runner 內部用：add-snapshot（capture）、shot-audit（單圖偵測）。
-- 本 skill（orchestrator）只加 per-screen 認領迴圈、work-stealing、per-lane worktree 重用，和**派一個專屬 runner agent** 跑完整修復閉環。
+- 本 skill（orchestrator）只加 per-screen 認領迴圈、work-stealing、per-lane worktree 重用，**派一個 runner agent** 跑單畫面修復閉環，run 尾**派一個 integrator agent** 彙整單一 MR。
 
 ### 全部委派、不輪詢
 
-- 只做配 lane／認領／**每畫面派一個 runner**／收 summary／發通知；
-- capture／改 code／build／test／截圖／開 MR 全在背景 runner（`run_in_background`）內，orchestrator **不碰截圖·issues·diff·build log**
+- 只做配 lane／認領／**每畫面派一個 runner**／收 summary／發通知／**run 尾派一個 integrator**；
+- capture／改 code／build／test／截圖／commit 全在背景 runner（`run_in_background`）內；彙整 cherry-pick／解衝突／build 驗證／截圖上傳／開單一 MR 全在背景 integrator 內；orchestrator **不碰截圖·issues·diff·build log**
 - 完成由 harness 通知驅動，不做 ScheduleWakeup 輪詢
-- runner 端只保留 self-abort（達迭代上限／build 連錯 3 次 → return stuck）
+- runner／integrator 端只保留 self-abort（達迭代上限／build 連錯 3 次 → return stuck/escalation）
 - 互動觸發、使用者在線即 backstop。細節見 orchestration.md §1–2。
 
 ### lane 並行 + 常駐 worktree
@@ -66,8 +68,8 @@ description: >-
 
 ### 合併 PR 是唯一人工點
 
-- 偵測→修→發 MR 全自動，不設修前 issue 閘
-- 使用者只在每個 per-screen 小 MR 上審 diff + 前後截圖。
+- 偵測→修→彙整→開 MR 全自動，不設修前 issue 閘
+- 使用者只在**一個** MR 上審 diff + 前後截圖（MR 內一畫面一 commit，可逐 commit／逐收合段審），批准／合併一次。
 
 ### production 只在修復階段動
 
@@ -85,15 +87,22 @@ sibling skill 歸屬：
 screen-mender（orchestrator）自己負責：
 - 畫面認領迴圈 + work-stealing
 - 每個 lane worktree 重用
-- 每個畫面派一個 runner agent 跑完整修復閉環
+- 每個畫面派一個 runner agent 跑單畫面修復閉環
+- run 尾派一個 integrator agent 彙整單一 MR
 
 ### 專屬 agent
 
 **[`screen-mender-runner`](../../agents/screen-mender-runner.md)**
 
-- **每畫面派一個**，獨力跑完整修復閉環（capture→audit→fix→審查驗證→MR），回一段精簡 summary。
-- 它的內部階段拆解與規則書（triage / 修復安全約束 / MR schema）都在 [`../../agents/references/`](../../agents/references/)（5 個階段 prompt + `issue-schemas.md`）——**orchestrator 不需懂這些細節**。
-- orchestrator 只掌握它的「回傳契約」：status（`fully-fixed`/`partially-fixed`/`clean`/`locked`/`defect`/`stuck`）＋ `escalation`（何時該打斷使用者）；schema 見 [`runner agent`](../../agents/screen-mender-runner.md)。
+- **每畫面派一個**，獨力跑單畫面修復閉環（capture→audit→fix→審查驗證→定稿；**不開 MR**），回一段精簡 summary。
+- 它的內部階段拆解與規則書（triage / 修復安全約束 / section schema）都在 [`../../agents/references/`](../../agents/references/)（01–05 階段 prompt + `issue-schemas.md`）——**orchestrator 不需懂這些細節**。
+- orchestrator 只掌握它的「回傳契約」：status（`fully-fixed`/`partially-fixed`/`clean`/`locked`/`defect`/`stuck`）＋ `section_path` ＋ `branch` ＋ `escalation`；schema 見 [`runner agent`](../../agents/screen-mender-runner.md)。
+
+**[`screen-mender-integrator`](../../agents/screen-mender-integrator.md)**
+
+- **整 run 派一個**（Phase 3，全 lane 收工後），把所有成功畫面彙整成單一 MR（cherry-pick→解衝突→build+衝突畫面重跑→串 aggregate description→push 開 MR）。
+- 程序在 [`../../agents/references/06-integrate.md`](../../agents/references/06-integrate.md)；aggregate schema 在 `issue-schemas.md` §4。
+- orchestrator 只掌握它的回傳契約：`mr_url`（或 dry-run 的 `proposed-mr.md` 路徑／`no-changes`）＋ `integrated[]` ＋ `demoted[]` ＋ `escalation`。
 
 ## 流程
 
@@ -137,7 +146,7 @@ screen-mender（orchestrator）自己負責：
 
 #### 2. 不建／不讀 ledger（無狀態）
 
-已修過的畫面在 Phase 2 開 MR 前由 runner live 查 git host 判斷（見 orchestration.md §5.1）。
+已修過的畫面在 **audit 階段**自然回 `clean`（已 merge、無新缺陷）→ 不產 section、不被彙整；run 級冪等靠 integration branch 名含 `run_id`（見 orchestration.md §5.2）。
 
 #### 3. 建 ephemeral run 目錄放暫存
 
@@ -188,12 +197,11 @@ Reference: orchestration.md §3–4
 - `neighborhood_regression`：`true`。
 - `dry_run`：`false`
   - 此為試跑模式
-  - 照常跑 capture→audit→fix→review→verify
-  - **不 push production branch、不開 MR**
-  - 每畫面把 patch落本 run 目錄，包含以下內容
-    - `git format-patch <base>..HEAD`
-    - before/after 截圖
-    - `proposed-mr.md`，schema 同 runner mr 階段（[`issue-schemas`](../../agents/references/issue-schemas.md) §4）
+  - 照常跑 capture→audit→fix→review→verify→定稿（local commit），run 尾照常 spawn integrator 彙整（cherry-pick + build 驗證）但**不 push、不開 MR**
+  - integrator 把**整 run 合併產物**落本 run 目錄（一份，非每畫面一份）：
+    - `change.patch` = `git format-patch <base>..HEAD --stdout`（合併 diff）
+    - `proposed-mr.md`，aggregate schema（[`issue-schemas`](../../agents/references/issue-schemas.md) §4），截圖引本地相對路徑
+    - 各畫面 before/after 截圖已在 `<run_dir>/<unified_id>/`
   - run 結束**不刪** run 目錄、回報其路徑（lane worktree 照清）。觸發：`/screen-mender --dry-run [畫面...]`、「試跑 screen-mender」「先別開 MR、給我看會怎麼改」。
 - `trace`：`false`
   - 是否要記錄 skill 分析數據
@@ -207,9 +215,9 @@ Reference: orchestration.md §3–4
 
 起跑時，當以下條件滿足時，需要向使用者告知後續行為：
 - `dry_run=true`
-  - 一句告知「dry-run：不會開 MR，產物將落 `<run_dir>`」後進 Phase 1。
+  - 一句告知「dry-run：不會開 MR，整 run 合併產物將落 `<run_dir>`」後進 Phase 1。
 - `dry_run=false` 且目標畫面數 > 1
-  - 起跑前明確等使用者確認一次：「即將處理 N 個畫面，最多開 N 個小 MR（draft）＋ push N 條 branch 到 `<base_branch>`；繼續？（或加 `--dry-run` 只看不開）」
+  - 起跑前明確等使用者確認一次：「即將處理 N 個畫面，修復後**彙整成 1 個 MR（draft）**＋ push 1 條 integration branch 到 `<base_branch>`；繼續？（或加 `--dry-run` 只看不開）」
   - 使用者已明確要求「直接跑」／帶 `--yes` → 跳過。
 
 ### Phase 1：canary 閘 → 認領下一個畫面 + 派 runner（原子）
@@ -236,12 +244,12 @@ Reference: orchestration.md §3–4
 3. **spawn runner（背景）**：**同一輪**立刻 spawn 一個 [`screen-mender-runner`](../../agents/screen-mender-runner.md)（`run_in_background`），傳入 Phase 2 列的 prompt 欄位，並以 Agent 的 `model` 參數帶 `runner_model`（覆寫 frontmatter）。
    - 鐵則：認領與 spawn 必須同一輪 tool-call 完成，不可只 `mkdir`／敘述「已認領、待會派」卻漏掉 spawn。
 
-### Phase 2：runner 跑完整畫面閉環（背景）
+### Phase 2：runner 跑單畫面閉環（背景，不開 MR）
 
-runner 獨力執行單一畫面的修復，完成後會回一段精簡 summary。
+runner 獨力執行單一畫面的修復、定稿（local commit + 交出 section），完成後回一段精簡 summary。
 orchestrator 對本畫面只做三件事：
 - 傳對 prompt 欄位
-- 收 summary
+- 收 summary（記下 `status` / `section_path` / `branch` 供 Phase 3 integrator）
 - 發通知 + 釋放 lane
 
 全程不碰截圖／issues／diff／build log
@@ -252,47 +260,61 @@ orchestrator 已知值轉傳，runner 不讀設定檔
 - `run_dir`、`unified_id`、`platform`
 - `worktree`、`branch`、`feature_branch_prefix`、`repo_canonical_path`
 - `device_serial`（本 lane 獨佔）
-- `base_branch`、`mr_tool`
+- `base_branch`（diff 基準；runner 不 push/不開 MR，故不需 `mr_tool`——那是 integrator 的）
 - `capture_locale`、`extra_audit_locales`
 - `string_fix_policy`、`dry_run`
 - `ui_framework_pref`（自動偵測 compose|swiftui）、`iterate_max`（2）、`internal_loop_max_rounds`（3）
-- `snapshot_test_cmd` / `build_cmd`（已知則預填，否則 runner 於 capture 經 add-snapshot 取得）
+- `snapshot_test_cmd` / `build_cmd`（已知則預填，否則 runner 於 capture 經 add-snapshot 取得；runner 會寫進該畫面 `meta.json` 供 integrator 衝突時重用）
 - `neighborhood_test_cmds`（`neighborhood_regression=true` 時帶：與本 `unified_id` 同 module／feature、且 base 已有 snapshot test 的鄰域畫面測試指令；無鄰域 → 不帶）
 
 > 註：`runner_model` **不走 prompt 欄位**，而是 spawn runner 時 Agent 的 `model` 參數（覆寫 frontmatter，per-call 優先）；runner 本身不需感知用了哪個 model。
 
 **收到 runner summary 後**（依 `status`，狀態鐵則見 [`runner 回傳契約`](../../agents/screen-mender-runner.md)）：
 
-- 發 milestone 通知一句（見〈對話節奏〉）：
-  - `fully-fixed`：「畫面 `<unified_id>` 小 MR 已發（!x），修了 N 條視覺缺陷。」
-  - `partially-fixed`：「畫面 `<unified_id>` 部分修復（!x）：N 條已修並驗證；M 條缺陷 after 圖仍可見、延後（<reason>）。」不得對殘留畫面單用「已修並驗證」。
-  - `clean`：audit 0 條 → 無 MR，summary 列入。
+- 發 milestone 通知一句（見〈對話節奏〉；此階段**尚未開 MR**，不報 MR 連結）：
+  - `fully-fixed`：「畫面 `<unified_id>` 已修復並驗證（N 條），待 run 尾彙整。」
+  - `partially-fixed`：「畫面 `<unified_id>` 部分修復：N 條已修並驗證；M 條 after 圖仍可見、延後（<reason>）。」不得對殘留畫面單用「已修並驗證」。
+  - `clean`：audit 0 條 → 不彙整，summary 列入。
   - `locked`／`defect`／`stuck`：列入 final summary backlog；`stuck` 且 `escalation` 非空 → 立刻打斷使用者。
   - `canary-ok`：canary 閘的早退訊號（非畫面結局）→ 不發 milestone，按 Phase 1.0 放開其餘 lane、對同畫面改派正常 runner。
   - `harness-missing`：**專案級** harness 缺失（只會由 canary 回）→ **停整 run**，依 `escalation` 印「缺哪幾項 + add-snapshot SKILL §10 接入步驟 + build error 摘要」、打斷使用者，不 fan-out、不續認領。
-  - `dry_run`：把「小 MR 已發（!x）」換成「試跑完成，產物 `<run_dir>/<unified_id>/`」；殘留語意照舊。
+- 記下 `fully-fixed`／`partially-fixed` 畫面的 `<run_dir>/<unified_id>/`（含 `branch`）→ 累積成 Phase 3 integrator 的 `screens[]`。
 - `escalation` 非空（STUCK／AUDIT_PROBLEM／build 連敗 3 次／字串資源檔修改失敗）→ 打斷使用者、附 runner 給的卡點與建議。
 - 釋放本 lane（claim 留著供對賬，worktree 留著續服務下一畫面）。
 - **不追 merge** → 立刻回 Phase 1 認領下一畫面。
 
-> 畫面狀態（`fully-fixed`／`partially-fixed`／`clean`）由 runner 在 stage 5 依「所有 kept+deferred 是否都解決」算定並寫進 MR；orchestrator 照 runner 的 status 轉述，不另判。verify PASS ≠ 整畫面乾淨。
+> 畫面狀態（`fully-fixed`／`partially-fixed`／`clean`）由 runner 在 stage 5 依「所有 kept+deferred 是否都解決」算定並寫進 `mr-section.md`；orchestrator 照 runner 的 status 轉述，不另判。verify PASS ≠ 整畫面乾淨。
 
-### Phase 3：終止 + final summary
+### Phase 3：彙整單一 MR → 終止 + final summary
 
-所有 lane 收工 → 回報一份 final summary。
+所有 lane 收工 → **先 spawn 一個 integrator 彙整單一 MR，再回報 final summary**。
 
-- 呈現：口頭／對話呈現 + **依 [`references/report-template.md`](references/report-template.md) 產一份持久報告**落 `<repo>/.screen-mender/reports/run-<run_id>.md`（非 ephemeral、teardown 不刪、不進版控）；不留 .audit。報告依修復程度分三段（完全修復／部分修復／未能修復；clean 不列），每畫面列 unified_id、修復項目（條列、一句一條）、MR 連結（`dry_run` → `proposed-mr.md` 路徑），部分修復必列殘留可見缺陷。
-- 結束告知：final summary 收尾**必明確告訴使用者報告路徑**（`報告已產出：<repo>/.screen-mender/reports/run-<run_id>.md`），引導使用者前往查看。
-- 內容：各畫面狀態（`fully-fixed`／`partially-fixed (n fixed, m deferred-visible)`／`clean`／locked／defect／stuck）+ MR 連結（`dry_run` → 改列 `<run_dir>/<unified_id>/proposed-mr.md` 路徑）。`partially-fixed` 要列殘留可見缺陷與原因（`needs-design`／`deferred-by-run-config`）。
+#### 3.0 spawn integrator（彙整單一 MR）
+
+- 所有 lane 收工後（worktree **先別回收**，integrator 要重用暖 worktree），spawn 一個 [`screen-mender-integrator`](../../agents/screen-mender-integrator.md)（`run_in_background`），傳入 prompt 欄位（見 orchestration §5.1）：
+  - `run_dir`、`run_id`、`platform`、`base_branch`、`mr_tool`、`capture_locale`、`string_fix_policy`、`dry_run`
+  - `lane_worktrees[]`、`device_serial`（任一備妥裝置）、`feature_branch_prefix`
+  - `screens[]` = Phase 2 累積的 `fully-fixed`／`partially-fixed` 畫面 `<run_dir>/<unified_id>/` 清單
+- `screens[]` 空（無任何成功畫面）→ 不 spawn integrator，final summary 標 `nothing-to-fix`。
+- 等 integrator 完成通知（事件驅動），取其回傳 `mr_url`（dry-run → `proposed-mr.md` 路徑）／`integrated[]`／`demoted[]`／`escalation`：
+  - `escalation` 非空（build 連敗／無法解衝突／push 失敗）→ 打斷使用者、附卡點。
+  - `demoted[]`（因衝突解被降 partially-fixed 的畫面）→ final summary 據此修正該畫面狀態。
+
+#### 3.1 final summary（一個 MR 連結）
+
+- 呈現：口頭／對話呈現 + **依 [`references/report-template.md`](references/report-template.md) 產一份持久報告**落 `<repo>/.screen-mender/reports/run-<run_id>.md`（非 ephemeral、teardown 不刪、不進版控）；不留 .audit。報告依修復程度分三段（完全修復／部分修復／未能修復；clean 不列），每畫面列 unified_id、修復項目（條列、一句一條），**頂部列整 run 唯一 MR 連結**（`dry_run` → `proposed-mr.md` 路徑），部分修復必列殘留可見缺陷。
+- 結束告知：final summary 收尾**必明確告訴使用者**（1）整 run 唯一 MR 連結、（2）持久報告路徑（`報告已產出：<repo>/.screen-mender/reports/run-<run_id>.md`）。
+- 內容：各畫面狀態（`fully-fixed`／`partially-fixed (n fixed, m deferred-visible)`／`clean`／locked／defect／stuck）；**MR 連結整 run 只有一個**（在報告頂部，非每畫面一個）；`dry_run` → 改列 `<run_dir>/proposed-mr.md` 路徑。`partially-fixed` 要列殘留可見缺陷與原因（`needs-design`／`deferred-by-run-config`）。
 - 觀測（每畫面）：附一行 compact 耗時 `capture <a>s · audit <b>s · fix <c>s/<k> builds (<r> rounds) · verify <d>s`（資料來自各 runner summary 的 `timing`），並點出本 run 最慢階段與 build 次數最高的畫面（=最該優化處）；`trace=true` → 改出完整逐階段 breakdown（見 [`orchestration`](references/orchestration.md) §7）。
 - capture 保真度旗標：列出本 run 有 `font-fidelity-degraded`／`representative-render`／`capture-nondeterministic`／`locale-unverifiable` 的畫面（這類「乾淨」或「已修」可能是 capture 不忠於真機造成的假象；`locale-unverifiable` 另列「需真機抽驗」清單）。
-- run-config 揭露：明示本 run 的 `string_fix_policy` 與 `dry_run`；若 `string_fix_policy` 關閉了「縮文案」這條修法，列出因此 `deferred-by-run-config` 的缺陷。`dry_run` 時明示「本 run 未開任何 MR，產物在 `<run_dir>`」。
-- 收尾：清掉所有 lane worktree + `claim_dir`；跑 [`scripts/ensure-devices.sh`](scripts/ensure-devices.sh) `--teardown --platform <P>` 關機所有自管 `test_phone_NN`（保留 profile 供下次重用、只動 pool 不碰其他裝置）；已 merge 的 branch 清除；ephemeral run 目錄（`.screen-mender/runs/<run_id>/`）刪除（`dry_run` 例外：run 目錄保留並回報路徑，見 orchestration §5.6）。**只刪 `runs/<run_id>/`；持久報告 `.screen-mender/reports/` 不在刪除範圍，保留供事後查看。**
+- run-config 揭露：明示本 run 的 `string_fix_policy` 與 `dry_run`；若 `string_fix_policy` 關閉了「縮文案」這條修法，列出因此 `deferred-by-run-config` 的缺陷。`dry_run` 時明示「本 run 未開 MR，整 run 合併產物在 `<run_dir>`」。
+- 收尾（**integrator 跑完才回收**）：清掉所有 lane worktree + `claim_dir`；跑 [`scripts/ensure-devices.sh`](scripts/ensure-devices.sh) `--teardown --platform <P>` 關機所有自管 `test_phone_NN`（保留 profile 供下次重用、只動 pool 不碰其他裝置）；per-screen branch 純本地隨 worktree remove 清除，integration branch `screen-mender-run-<run_id>`（承載唯一 MR）保留；ephemeral run 目錄（`.screen-mender/runs/<run_id>/`）刪除（`dry_run` 例外：run 目錄保留並回報路徑，見 orchestration §5.6）。**只刪 `runs/<run_id>/`；持久報告 `.screen-mender/reports/` 不在刪除範圍，保留供事後查看。**
 
 ## 參考
 
-- **編排紀律（orchestrator 自己的規則）** → [`references/orchestration.md`](references/orchestration.md)：§1 delegate、§2 無 watchdog、§3–4 lane／認領／worktree、§5 MR／截圖上傳、§6 內部 loop 上限、§7 觀測。
-- **runner agent + 其規則書（runner 領域，orchestrator 通常不需開）** → [`../../agents/screen-mender-runner.md`](../../agents/screen-mender-runner.md) 與 [`../../agents/references/`](../../agents/references/)：5 個階段 prompt（01–05）＋ `issue-schemas.md`（§2 triage／§3 修復安全約束／§4 issues.md・MR schema）。
+- **編排紀律（orchestrator 自己的規則）** → [`references/orchestration.md`](references/orchestration.md)：§1 delegate、§2 無 watchdog、§3–4 lane／認領／worktree、§5 單一 MR 生命週期／彙整／截圖上傳、§6 內部 loop 上限、§7 觀測。
+- **runner agent + 其規則書（runner 領域，orchestrator 通常不需開）** → [`../../agents/screen-mender-runner.md`](../../agents/screen-mender-runner.md) 與 [`../../agents/references/`](../../agents/references/)：階段 prompt（01 capture–05 finalize）＋ `issue-schemas.md`（§2 triage／§3 修復安全約束／§4 section・aggregate MR schema）。
+- **integrator agent（彙整單一 MR，orchestrator 通常不需開）** → [`../../agents/screen-mender-integrator.md`](../../agents/screen-mender-integrator.md) 與 [`../../agents/references/06-integrate.md`](../../agents/references/06-integrate.md)。
 
 ## 操作須知
 
@@ -301,33 +323,36 @@ orchestrator 已知值轉傳，runner 不讀設定檔
 - `/screen-mender` — 掃全部畫面、逐畫面修。
 - `/screen-mender <畫面...>` — 只掃指定畫面。
 - `/screen-mender --model <sonnet|opus|haiku> [畫面...]` — 指定 runner model（預設 `sonnet`，省用量主槓桿；難畫面可改 `opus`）。
-- `/screen-mender --dry-run [畫面...]` — 試跑：照常偵測+修+驗，但不開 MR，產物落 run 目錄供檢視。
-- 自然語言：「跑 screen-mender」「逐畫面修視覺跑版」「一畫面一個小 MR 修 UI」；試跑：「試跑 screen-mender」「先別開 MR、給我看會怎麼改」。
+- `/screen-mender --dry-run [畫面...]` — 試跑：照常偵測+修+驗，但不開 MR，整 run 合併產物落 run 目錄供檢視。
+- 自然語言：「跑 screen-mender」「逐畫面修視覺跑版」「把畫面一個個修好收成一個 MR」；試跑：「試跑 screen-mender」「先別開 MR、給我看會怎麼改」。
 
 ### 對話節奏
 
 main session 輸出嚴格限縮在 milestone：
 
-1. 開頭一句：「開始 screen-mender；待檢查畫面 N 個（全部／指定）；runner model = `<runner_model>`。」（非預設 `sonnet` 時尤其要點明，讓使用者知道用量／品質取捨）
-2. 每畫面 runner 回 summary 後一句（Phase 2）：小 MR 已發 + 修了幾條 + 連結；有殘留可見缺陷時標「部分修復」並點出殘留（不得單用「已修」）。
-3. 終止一份 final summary，並告知持久報告路徑（`.screen-mender/reports/run-<run_id>.md`）供查看。
+1. 開頭一句：「開始 screen-mender；待檢查畫面 N 個（全部／指定）；runner model = `<runner_model>`；修完彙整成 1 個 MR。」（非預設 `sonnet` 時尤其要點明，讓使用者知道用量／品質取捨）
+2. 每畫面 runner 回 summary 後一句（Phase 2）：已修復並驗證 + 修了幾條（**此時尚未開 MR**）；有殘留可見缺陷時標「部分修復」並點出殘留（不得單用「已修」）。
+3. run 尾 integrator 回報後一句（Phase 3）：「已彙整成 1 個 MR（!x）：N 畫面，X 全修 / Y 部分。」
+4. 終止一份 final summary，並告知唯一 MR 連結 + 持久報告路徑（`.screen-mender/reports/run-<run_id>.md`）供查看。
 
-只有以下情況才打斷使用者（一律由 runner return 的 `escalation` 帶上來）：
+只有以下情況才打斷使用者（一律由 runner／integrator return 的 `escalation` 帶上來）：
 
 - 截圖 build／capture 連續失敗 ≥ 3 次（同畫面）。
 - reviewer AUDIT_PROBLEM／fix STUCK／內部 loop 超 `internal_loop_max_rounds` 未過。
 - 字串資源檔修改失敗（找不到對應 key／寫入失敗）。
+- integrator 彙整失敗（build 連敗／cherry-pick 無法解衝突／push 失敗）。
 
 ### 冪等 / 中斷
 
-- 冪等：runner 在 stage 5 開 MR 前 live 查 git host——該畫面 branch 已有 open MR → 跳過；已 merge 過且當前無新缺陷 → audit 0 條自然略過。
-- 中斷：無狀態 → 下次 run 重跑；同畫面 runner idempotent（worktree 增量 + MR 冪等 live 查）→ 不會重複發 MR。
+- 冪等：已修畫面在 **audit 階段**回 `clean`（已 merge、無新缺陷）→ 不產 section、不被彙整；run 級靠 integration branch 名含 `run_id`（integrator 先 live 查 open MR、已有則 update 不重開，見 orchestration §5.2）。
+- 中斷：無狀態 → 下次 run 重跑；per-screen runner idempotent（worktree 增量）；integrator idempotent（同 run_id branch + live 查 MR）→ 不會重複開 MR。
 - claim↔live-runner 對賬：orchestrator 被完成通知喚醒、或讓 lane 收工前，對照 `claim_dir` 與 live runner；有 claim 卻無對應 live runner = 漏派，立即補 spawn（事件驅動，非 watchdog；見 orchestration.md §3）。
 
 ### 失敗模式
 
-- 相依 skill（add-snapshot／shot-audit／screen-list）或 runner agent 缺失 → Phase 0 preflight 即列為 ❌硬缺、印 checklist 後終止（見 [`references/preflight.md`](references/preflight.md)），不留到起動後才反應式爆出。其餘環境硬缺（無裝置／git host 未登入／git transport 不通或無 push 權限／`curl` 或上傳 token 缺／磁碟不足／Android SDK 測不到）亦同階段一次攔下。
+- 相依 skill（add-snapshot／shot-audit／screen-list）或 runner／integrator agent 缺失 → Phase 0 preflight 即列為 ❌硬缺、印 checklist 後終止（見 [`references/preflight.md`](references/preflight.md)），不留到起動後才反應式爆出。其餘環境硬缺（無裝置／git host 未登入／git transport 不通或無 push 權限／`curl` 或上傳 token 缺／磁碟不足／Android SDK 測不到）亦同階段一次攔下。
 - 專案未接 snapshot harness（缺 instrumentation runner／snapshot lib／swizzler 等測試前置）→ preflight 靜態只標 ❓，**Phase 1.0 canary 閘**以 1 次冷編權威定案、回 `harness-missing`、**停整 run** 並回報缺項 + add-snapshot SKILL §10 接入步驟；不白燒 N 次冷編、預設不自動改建置設定。
 - manifest 列舉失敗 → 上報「screen-list 未產出 `screen-list.json`」。
-- 某畫面卡 locked／defect／stuck → 不阻塞整 run，列入 summary backlog、續下一畫面。
-- 全部畫面 locked／defect／clean、零可修 → final summary 標 `nothing-to-fix`。
+- 某畫面卡 locked／defect／stuck → 不阻塞整 run，列入 summary backlog、續下一畫面（不進彙整）。
+- 彙整失敗：integrator build 連敗／cherry-pick 衝突無法乾淨解 → 該畫面跳過不併入（列 `escalation`），其餘畫面照常彙整成 MR；push 失敗 → 打斷使用者、產物保在 run_dir 供手動處理。
+- 全部畫面 locked／defect／clean、零可修（`screens[]` 空）→ 不 spawn integrator、final summary 標 `nothing-to-fix`。

@@ -1,6 +1,6 @@
 # plugin-screen-mender
 
-逐畫面修復 App 截圖看得見的視覺跑版缺陷，雙平台 iOS/Android 自動偵測，一畫面一個小 MR 的完整修復閉環。
+逐畫面修復 App 截圖看得見的視覺跑版缺陷，雙平台 iOS/Android 自動偵測，並行修復後彙整成單一 MR（一畫面一 commit）的完整閉環。
 
 ## 安裝
 
@@ -18,7 +18,7 @@
 /screen-mender <畫面...> # 只掃指定畫面。
 /screen-mender --model <sonnet|opus|haiku> [畫面...] # 指定 runner model（預設 sonnet）。
 /screen-mender --dry-run [畫面...] # 試跑：照常偵測+修+驗，但不開 MR，產物落 run 目錄供檢視。
-/screen-mender [自然語言描述]  #自然語言：「跑 screen-mender」「逐畫面修視覺跑版」「一畫面一個小 MR 修 UI」；試跑：「試跑 screen-mender」「先別開 MR、給我看會怎麼改」。
+/screen-mender [自然語言描述]  #自然語言：「跑 screen-mender」「逐畫面修視覺跑版」「把畫面一個個修好收成一個 MR」；試跑：「試跑 screen-mender」「先別開 MR、給我看會怎麼改」。
 ```
 
 **Skills**
@@ -27,7 +27,7 @@
 
 | Skill | 用途 |
 |-------|------|
-| `screen-mender:screen-mender` | 逐畫面修復截圖看得見的視覺缺陷，一畫面一個小 MR 的完整閉環 |
+| `screen-mender:screen-mender` | 逐畫面修復截圖看得見的視覺缺陷，並行修復後彙整成單一 MR（一畫面一 commit）的完整閉環 |
 
 內部 skill（`user-invocable: false`，由 runner／orchestrator 呼叫，使用者不可直接觸發）：
 
@@ -41,7 +41,8 @@
 
 | Agent | 角色 |
 |-------|------|
-| `screen-mender-runner` | 內部 agent：每畫面一個，手持 5 格 TODO 獨力跑 capture→audit→fix→審查驗證→MR 完整閉環，回精簡 summary（取代舊 developer/reviewer/verifier 三 agent，由 skill spawn、勿直接呼叫） |
+| `screen-mender-runner` | 內部 agent：每畫面一個，手持 5 格 TODO 獨力跑 capture→audit→fix→審查驗證→定稿（commit + 交出 section，不開 MR），回精簡 summary（取代舊 developer/reviewer/verifier 三 agent，由 skill spawn、勿直接呼叫） |
+| `screen-mender-integrator` | 內部 agent：整 run 一個，run 尾把所有成功畫面 cherry-pick 成單一 integration branch、解共享字串衝突、build + 衝突畫面重跑、串 aggregate description 開**單一** MR（由 skill 在 Phase 3 spawn、勿直接呼叫） |
 
 ## 平台
 
@@ -51,9 +52,10 @@ iOS / Android 雙平台，由 repo 檔案特徵自動偵測，零設定檔。
 
 文件採 **hub-and-spoke**，避免長鏈與循環引用（最深引用 ≤ 1 層）。改文件時守以下四條：
 
-**兩個 hub（進入點，always-loaded）**
+**三個 hub（進入點，always-loaded）**
 - `skills/screen-mender/SKILL.md`（orchestrator）
-- `agents/screen-mender-runner.md`（runner）
+- `agents/screen-mender-runner.md`（runner；spoke = `references/01`–`05`）
+- `agents/screen-mender-integrator.md`（integrator；spoke = `references/06-integrate.md`）
 - 其餘 `references/*` 皆為 spoke。
 
 **四條連結規則**

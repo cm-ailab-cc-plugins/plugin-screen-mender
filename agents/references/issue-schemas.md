@@ -161,7 +161,7 @@ after 圖仍可見 → 列殘留可見、畫面降 `partially-fixed`。
 fix 階段中途發現 deferred：
 
 - 用 return 的 `deferred[]` 回報（見 fix 階段）。
-- runner 在 mr 階段列入 MR 殘留可見段（最顯眼處），不靜默吞。
+- runner 在定稿階段（stage 5）列入 `mr-section.md` 殘留可見段（最顯眼處），不靜默吞；run 尾彙整進唯一 MR。
 
 ## 3. 修復安全約束（outcome-based：守「結果」不守「手段」）
 
@@ -308,7 +308,9 @@ screen-mender 全靠截圖偵測＋驗收，但截圖可能不忠於真機。
 - **after 圖只要還看得到缺陷，畫面就不是 fully-fixed**，不論歸因（字型 fallback／Locale.current／洗牌）——至少 partially-fixed＋殘留可見，或標 capture 不可信。
 - 修復正確性無法在 after 圖呈現者（改用 native API 但 sim 仍顯舊值、before/after byte-identical）標 `code-verified／snapshot-unverifiable`，不得報 fully-fixed。
 
-## 4. 紀錄去處：MR 是唯一 SSOT（零本地紀錄檔）
+## 4. 紀錄去處：單一 MR 是唯一 SSOT（零本地紀錄檔）
+
+> 新模型：一個 run 一個 MR。每畫面 runner（stage 5）只交出**本畫面段落** `mr-section.md`；run 尾 `screen-mender-integrator` 把全部畫面段落串成**一份** aggregate MR description（每畫面一收合段），開唯一 MR（見 [`06-integrate`](06-integrate.md)）。MR 仍是唯一 SSOT，零本地紀錄檔。
 
 唯一暫存輸入 = `issues.md`，放 ephemeral run 目錄（run 結束即刪，不進 `.audit` 持久區）。
 
@@ -331,52 +333,79 @@ screen-mender 全靠截圖偵測＋驗收，但截圖可能不忠於真機。
 >   - 原因：它已在看截圖 + code，邊際成本低。
 > - 「怎麼修 / 反查 file:line / 選 tier」由 runner 的 fix 階段在真 render 上迭代決定。
 
-修了什麼／不修什麼／before-after 一律寫進 MR description（不產任何 `.audit` 檔：wont-fix / pending-merge / fixed / ledger）。
+修了什麼／不修什麼／before-after 一律寫進 `mr-section.md`（run_dir），run 尾彙整進唯一 MR（不產任何 `.audit` 檔：wont-fix / pending-merge / fixed / ledger）。
 
-### MR 標題固定模板
+### 標題 / commit message 固定模板
 
-每個 MR 標題用**同一固定模板**，讓使用者在 MR list 一眼掃描、辨識為 screen-mender 自動產出：
+兩個層級的標題，都用固定模板讓使用者一眼辨識為 screen-mender 自動產出：
+
+**(a) per-screen commit message**（runner stage 5；MR 內一畫面一 commit）：
 
 - 全修復：`自動跑版修復：<unified_id> - <原因摘要>`
 - 部分修復：`自動跑版修復（部分）：<unified_id> - <原因摘要>`
+
+**(b) aggregate MR 標題**（integrator；整 run 唯一 MR）：
+
+- `自動跑版修復：<N> 畫面（<X> 全修 / <Y> 部分）`
+  - `N` = 併入 MR 的畫面數；`X` = fully-fixed 數；`Y` = partially-fixed 數（Y=0 時可省略「/ 0 部分」）。
 
 欄位：
 
 - `<unified_id>`：畫面統一 id（= branch 用的同一個；單平台直接用，monorepo 跨平台才帶平台前綴）。
 - `<原因摘要>`：一句話講主要缺陷；多缺陷取最主要者 + 「等 N 處」（例：`暱稱欄位截斷等 3 處`）。
-- 「自動」前綴：標示本 MR 為 screen-mender 自動產生，人工 PR 把關者一眼可識。
+- 「自動」前綴：標示為 screen-mender 自動產生，人工 PR 把關者一眼可識。
 
 範例：
 
-- `自動跑版修復：use_shield_screen - 連勝盾牌標題截斷`
-- `自動跑版修復（部分）：team_rule_view - 規則標題爆框`（1 修 / 1 延後）
+- commit：`自動跑版修復：use_shield_screen - 連勝盾牌標題截斷`
+- commit：`自動跑版修復（部分）：team_rule_view - 規則標題爆框`（1 修 / 1 延後）
+- MR 標題：`自動跑版修復：8 畫面（6 全修 / 2 部分）`
 
-標題狀態鐵則（決定用哪個 variant）：
+狀態鐵則（決定 per-screen commit 用哪個 variant）：
 
 - 畫面狀態由「所有 kept+deferred 缺陷是否都已解決」計（非「我選去修的那幾條過 verify 沒」）。
-- 只要有任一 `kept`／`deferred` 缺陷在 after 圖仍可見，**必用「（部分）」variant**，不得用全修復 variant。
-  - 並把殘留項列在最顯眼處（殘留可見段，不可只藏在「考慮過但不修」段）。
-- summary 標題同此狀態規則。
+- 只要有任一 `kept`／`deferred` 缺陷在 after 圖仍可見，**該畫面 commit 必用「（部分）」variant**，並把殘留項列在該畫面 section 最顯眼處（殘留可見段，不可只藏在「考慮過但不修」段）。
+
+### per-screen section schema（`mr-section.md`，runner stage 5 產）
+
+截圖一律先引 run_dir 內**相對檔名**；integrator 開 MR 時才 `POST /uploads` 換成 `/uploads/...`（dry_run 保留相對路徑）。
 
 ```markdown
-## 狀態：fully-fixed | partially-fixed (n fixed, m deferred-visible) | clean
-## 修的視覺缺陷（N 條）
-### [<severity>] <category> · <title>
+## <unified_id> — 狀態：fully-fixed | partially-fixed (n fixed, m deferred-visible) | clean
+### 修的視覺缺陷（N 條）
+#### [<severity>] <category> · <title>
 - 修復方式：<...>（file:line）
 - AC：<...>
 -（若為退讓解）legibility-degraded：縮放比例 <r>，最優解 <縮文案/長高> 因 <原因> 未採
 
-## ⚠️ 殘留可見缺陷（deferred，after 圖仍看得到，m 條）
+### ⚠️ 殘留可見缺陷（deferred，after 圖仍看得到，m 條）
 - [<category>] <title> — `deferred:<needs-design|deferred-by-run-config>` — <為何本 run 不修；deferred-by-run-config 要寫清「已知怎麼修、被哪條 run-config 關掉」>
 
-## 修改前後對照
-**修改前** ![](/uploads/.../before.png)
-**修改後** ![](/uploads/.../after.png)
+### 修改前後對照
+**修改前** ![](before__<state>__<locale>.png)
+**修改後** ![](after__<state>__<locale>.png)
 
-## 考慮過但不修（wont-fix，非缺陷或不在標的）
+### 考慮過但不修（wont-fix，非缺陷或不在標的）
 - [<category>] <title> — <wont-fix reason vocab 之一>
 ```
 
-before/after 截圖經 `POST /projects/:id/uploads` 取得 `/uploads/...` markdown 後內嵌。
+### aggregate MR description schema（`screen-mender-integrator` 串各 section 產）
 
-- 上傳細節：multipart，`curl -F file=@<png>` + token。
+```markdown
+# 自動跑版修復：<N> 畫面（<X> 全修 / <Y> 部分）
+- run id：<run_id> · 平台：<platform> · 語系：<capture_locale> · string_fix_policy：<...>
+- 涵蓋：<unified_id 清單，一行掃描>
+
+## ⚠️ 全 run 殘留可見缺陷彙總（<m> 條，分散在 <k> 個部分修復畫面）
+- <unified_id>｜[<category>] <title> — `deferred:<reason>` — <一句>
+
+<!-- 每畫面一收合段，reviewer 可逐畫面展開；對應 MR 內一畫面一 commit -->
+<details><summary><unified_id> — <fully-fixed|partially-fixed (n,m)></summary>
+
+<該畫面 mr-section.md 內容，截圖引用換成 /uploads/...>
+
+</details>
+```
+
+- 全部畫面 fully-fixed 且無任何殘留可見 → 「⚠️ 全 run 殘留可見彙總」段省略、MR 轉 ready；否則保留該段、MR 留 draft。
+- before/after 截圖經 `POST /projects/:id/uploads` 取得 `/uploads/...` markdown 後內嵌（multipart，`glab api -F` 不支援，用 `curl -F file=@<png>` + token）。

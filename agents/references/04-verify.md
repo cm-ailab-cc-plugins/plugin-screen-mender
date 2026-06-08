@@ -14,7 +14,7 @@
 > 此前提僅在 capture 確定性成立時有效：若該畫面標 `capture-nondeterministic`／內容隨機／字型間歇 fallback，before/after 不可比，不得在其上判視覺等價 PASS（[`issue-schemas`](issue-schemas.md) §3.5）。
 
 ## Inputs
-- diff：`git -C <worktree> diff <base_branch>`（`dry_run` 也用這個；非 dry-run 已開 MR 後可改 `<mr_tool> mr diff <id>`）——Step 0 用。
+- diff：`git -C <worktree> diff <base_branch>`（本畫面尚未開 MR——MR 是 run 尾 integrator 統一開——故一律用 git diff）——Step 0 用。
 - `issues.md` kept（含每條 AC，ground truth；只該改這些）。
 - after 截圖（stage 3）+ before 截圖（stage 1，Step 3 視覺等價掃描必需）。
 - `neighborhood_test_cmds`（選用）。

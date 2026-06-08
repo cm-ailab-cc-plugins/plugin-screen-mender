@@ -16,11 +16,11 @@
 - 收 runner summary
 - 發通知
 
-> 註：不維護 ledger、不輪詢 merge、**不自己開 MR**——MR 由 runner 在其 mr 階段開，見 §5。
+> 註：不維護 ledger、不輪詢 merge、**不自己碰 diff/開 MR**——run 尾 spawn 一個 `screen-mender-integrator` 把所有畫面彙整成**單一** MR，見 §5。
 
 ### per-screen pipeline 一律在背景 runner 內完成
 
-整個 per-screen pipeline（capture / codebase 修改 / build / test / 截圖 / 審查驗證 / rebase / push / 開 MR）一律在背景 runner（`run_in_background`）內完成；orchestrator **不碰截圖·issues·diff·build log**。
+整個 per-screen pipeline（capture / codebase 修改 / build / test / 截圖 / 審查驗證 / commit）一律在背景 runner（`run_in_background`）內完成；run 尾的彙整（cherry-pick / 解衝突 / build 驗證 / 截圖上傳 / 開單一 MR）在背景 `screen-mender-integrator` 內完成；orchestrator **不碰截圖·issues·diff·build log**。
 
 - 原因：main session 不自己跑會 block > 5 min 的工作。
 - 把 per-screen 細節關進 runner，main 的 context 每畫面只留一段精簡 summary。
@@ -131,90 +131,84 @@ git -C <repo_path> worktree add <worktree_root>/screen-mender-lane<i> -b <featur
 git -C <lane_worktree> checkout <base_branch> && git -C <lane_worktree> pull --ff-only && git -C <lane_worktree> checkout -b <feature_branch_prefix><下一 unified_id>
 ```
 
-### run 結束才回收 lane 資源
+### integration worktree（run 尾彙整重用，不新建）
+
+- integrator 不新建 worktree（會冷編）→ 重用一條暖的 lane worktree（`lane_worktrees[0]`）切 integration branch、cherry-pick 全部畫面。
+- 故 lane worktree 在 integrator 跑完前**不可先回收**；Phase 3 順序固定：全 lane 收工 → spawn integrator → integrator 回 `mr_url` → 才回收 worktree。
+
+### run 結束才回收 lane 資源（在 integrator 跑完之後）
 
 - `git worktree remove` 所有 lane。
 - 跑 `scripts/ensure-devices.sh --teardown --platform <P>` 關機所有自管 `test_phone_NN`。
   - 保留 profile 供下次重用；只動 pool、不碰使用者其他裝置。
-- 已 merge 的 branch 確認後 `branch -D` + `push origin --delete`（worktree 留著續服務下一畫面）。
+- per-screen branch 純本地（整 run 不 push）→ 隨 worktree remove 一併清（`branch -D <feature_branch_prefix>*`）；**只有 integration branch `screen-mender-run-<run_id>` push 到遠端**（承載唯一 MR），不刪。
 - 不用 gradle build-cache（對本類 app 無益）；加速全靠 per-lane 增量。
 
-## 5. MR 生命週期
+## 5. MR 生命週期：一個 run 一個 MR
 
-`mr_tool` 由 git remote 推得：gitlab→glab / github→gh。MR = 唯一 SSOT，零紀錄檔。
+`mr_tool` 由 git remote 推得：gitlab→glab / github→gh。單一 MR = 唯一 SSOT，零紀錄檔。
 
-> 新模型下本節由 **runner 的 mr 階段**執行（見 runner agent screen-mender-runner 與其 05-mr 階段），orchestrator 不直接碰 MR。
+> 新模型：per-screen runner **不開 MR**（stage 5 只 local commit + 交出 `mr-section.md` 到 run_dir，見 05-finalize）；run 尾 orchestrator spawn 一個 `screen-mender-integrator`，把所有成功畫面的 per-screen branch 彙整成**一條 integration branch + 一個 MR**（見 [`06-integrate`](../../../agents/references/06-integrate.md)）。orchestrator 仍不直接碰 diff/MR。
+>
+> 為何收斂成單一 MR：一次 run 修數十畫面、各開一個 MR → 數十個 review/合併單位，管理成本爆炸。改成一個 MR、MR 內**一畫面一 commit**：reviewer 仍可逐 commit／逐收合段審（每塊 diff 一樣小），但只批准／合併**一次**。
 
-### §5.0 dry-run（試跑，不開 MR）
+### §5.0 per-screen branch 不 push（共用 .git）
 
-`dry_run=true` 時整個 §5 改走「只產出、不動遠端」：
+- lane worktree 都是 canonical repo 的 `git worktree`，**共用 .git / refs** → per-screen branch 整 run 留本地，integrator 直接 cherry-pick，無需 push。
+- 只有 run 尾的 integration branch `screen-mender-run-<run_id>` push 到遠端（承載唯一 MR）。
+- 連帶消掉舊模型「數十條 branch push 到遠端」。
 
-- fix 階段只 local commit、**不 push**（orchestrator 傳 `dry_run` 給 runner）。
-- mr 階段 **不 rebase、不 push、不開 MR**；改從 lane worktree 取產物落 `<run_dir>/<unified_id>/`：
-  - `change.patch` = `git -C <worktree> format-patch <base_branch>..HEAD --stdout`。
-  - `before.png` / `after.png`（複製 fix 階段的 before/after 截圖）。
-  - `proposed-mr.md` = §5.3／[`issue-schemas`](../../../agents/references/issue-schemas.md) §4 的 MR description，但截圖引本地相對路徑（不 `POST /uploads`），轉 ready 與否改標 `would-be-ready`。
-- 審查與驗證階段照跑（`diff_cmd` = `git -C <worktree> diff <base_branch>`、判 after-shot）；內部 loop 照常。
-- 冪等（§5.1）略過（無 MR 可查）；轉 ready（§5.4）略過。
+### §5.1 彙整（integrator，全 lane 收工後 spawn 一次）
 
-### §5.1 冪等
+orchestrator 傳給 integrator 的 prompt 欄位（已知值轉傳，見 [`06-integrate`](../../../agents/references/06-integrate.md)）：
 
-- 開 MR 前 live 查 `<mr_tool> mr list`，若該畫面 branch（`<feature_branch_prefix><unified_id>`）已有 open MR → 跳過不重開。
-- done-ness 不靠本地紀錄、靠 live 查。
+- `run_dir`、`run_id`、`platform`、`base_branch`、`mr_tool`、`capture_locale`、`string_fix_policy`、`dry_run`
+- `lane_worktrees[]`（取一條暖的當 integration worktree）、`device_serial`、`feature_branch_prefix`
+- `screens[]` = 各 runner 交出 status ∈ {fully-fixed, partially-fixed} 的 `<run_dir>/<unified_id>/`（含 `meta.json`/`mr-section.md`/before·after）
 
-### §5.2 開 MR + rebase 歸屬
+integrator 程序（細節在 06-integrate）：暖 worktree 切 integration branch → 依序 cherry-pick（一畫面一 commit）→ 解共享字串衝突 → build 一次 + 只對衝突畫面重跑 snapshot test → 串 aggregate description（每畫面一收合段 + 內嵌 before/after）→ push 開單一 MR。
 
-fix 階段 push 後，mr 階段 rebase 到 `base_branch`（已 push 用 `--force-with-lease`），開一個 MR（一畫面一個）。
+`screens` 空（無任何成功畫面）→ integrator 回 `no-changes`、不開 MR。
 
-- rebase 一律由 mr 階段做。
-- fix 階段（含被退回重修那輪）只 commit + push，不自己 rebase。
-  - 原因：避免同一 branch 在不同階段互踩 force-push。
+### §5.2 冪等（run 級）
 
-### §5.3 MR description = 唯一紀錄
+- integration branch 名含 `run_id` → 同一 run 重跑同名 branch、integrator 先 live 查 `<mr_tool> mr list`，該 branch 已有 open MR → 不重開、改 update description。
+- 不同 run 各自 branch/MR。
+- 已修畫面的冪等在 **audit 級**達成：已 merge 過且無新缺陷的畫面 audit 回 `clean` → 不產 section、不被 cherry-pick（不再 per-branch 查 open MR）。
 
-列 + 內嵌截圖（schema 見 [`issue-schemas`](../../../agents/references/issue-schemas.md) §4）：
+### §5.3 description = 唯一紀錄（aggregate schema 見 [`issue-schemas`](../../../agents/references/issue-schemas.md) §4）
 
-- 標題：固定模板 `自動跑版修復[（部分）]：<unified_id> - <原因摘要>`（見 [`issue-schemas`](../../../agents/references/issue-schemas.md) §4〈MR 標題固定模板〉；有任一殘留可見 → 必用「（部分）」variant）。
-- 畫面狀態：`fully-fixed` / `partially-fixed (n fixed, m deferred-visible)` / `clean`——由「所有 kept+deferred 缺陷是否都解決」計，非「我選修的那幾條過 verify 沒」。
-- 修了哪些視覺缺陷（file:line + 修法；退讓解註記 `legibility-degraded`）。
-- ⚠️ 殘留可見缺陷（`deferred:needs-design` / `deferred:deferred-by-run-config`，after 圖仍可見）列最顯眼處。
-  - 標題鐵則：有任一殘留可見 → MR 標題必用「（部分）」variant（`自動跑版修復（部分）：…`，見 [`issue-schemas`](../../../agents/references/issue-schemas.md) §4），不得用全修復 variant。
-- 考慮過但不修（wont-fix reason）。
-- 內嵌 before/after 截圖。
-  - 上傳：`POST /projects/:id/uploads` 取得 `/uploads/...` markdown 嵌進 description。
-  - 注意：multipart；`glab api -F` 不支援，用 `curl -F file=@<png>` + token。
-- 不產任何 `.audit` 紀錄檔（一律不寫：issues / fixed / wont-fix / pending-merge）。
+- 標題：固定模板 `自動跑版修復：<N> 畫面（<X> 全修 / <Y> 部分）`。
+- 總覽段：涵蓋畫面清單 + 全 run 殘留可見彙總（所有 partially-fixed 畫面的殘留集中列最顯眼處）。
+- 每畫面一 `<details>` 收合段（= 該畫面 `mr-section.md`：狀態 / 修了什麼 file:line / 殘留 / wont-fix / before·after）。
+- before/after 上傳：`POST /projects/:id/uploads` 取 `/uploads/...` 嵌入（multipart；`glab api -F` 不支援，用 `curl -F file=@<png>` + token）。
+- 不產任何 `.audit` 紀錄檔。
 
 ### §5.4 轉 ready
 
-`verify_verdict` PASS → `<mr_tool> mr update <id> --ready`。
-
-> PASS 條件：scope/redesign 守住 + 被修的那幾條 AC + 目標區正確 + 視覺等價 + 無 regression，審查與驗證一格涵蓋。
-
-- verify PASS ≠ 畫面乾淨；畫面狀態由 mr 階段綜合 verify 的 `residual_visible` 另算（§5.3）。
-- self-review/verify 紀律：審查與驗證階段雖與 fix 是同一 runner，仍須換「審查者／驗收者」視角獨立審 scope/redesign + 比 AC + 視覺等價 + 殘留盤點。
-  - **不得因自己是修的人就放水或略過會出錯處**（見 `agents/references/04-verify.md`）。
-  - 這是合併 agent 後最需守住的一關。
+- 全部畫面 fully-fixed 且無任何殘留可見 → integrator `<mr_tool> mr update <id> --ready`。
+- 任一畫面 partially-fixed／有殘留可見 → 留 draft（需人工掃殘留）。
+- 畫面狀態由「所有 kept+deferred 是否都解決」計，非「過 verify 的那幾條」。
+- self-review/verify 紀律（per-screen 階段）：審查與驗證階段雖與 fix 同一 runner，仍須換「審查者／驗收者」視角獨立審 scope/redesign + 比 AC + 視覺等價 + 殘留盤點。
+  - **不得因自己是修的人就放水**（見 `agents/references/04-verify.md`）。
 
 ### §5.5 無 polling、無 watchdog
 
-- 發出即往下一畫面；run 內不追 merge 狀態（merge 與否、何時不阻塞 run）。
-- 下次 run 靠 §5.1 冪等 live 查避免重做。
+- integrator 開出 MR 即收工；run 內不追 merge 狀態。
+- 下次 run 靠 audit 級冪等（已修畫面回 clean）避免重做。
 
 ### §5.6 run 期間暫存
 
 = ephemeral run 目錄 `<repo>/.screen-mender/runs/<run_id>/`（gitignored、不進版控，`.audit` 一律不寫）。以下皆放此，run 結束即刪：
 
-- issues.md
-- 截圖
-- audit/dev/verify 的 working 輸出
-- run 結束清所有 lane worktree + `claim_dir`，並跑 `ensure-devices.sh --teardown` 關機自管裝置（保留 profile，見 §4）。
+- issues.md / 截圖 / 各畫面 `mr-section.md`·`meta.json` / audit/dev/verify 的 working 輸出 / `integrate-build.log`
+- run 結束清所有 lane worktree + `claim_dir`，並跑 `ensure-devices.sh --teardown` 關機自管裝置（保留 profile，見 §4）。**順序：integrator 跑完才回收 worktree**（它要重用暖 worktree）。
 
 **dry-run 例外**：`dry_run=true` 時
 
-- run 目錄是交付物（`change.patch` / 截圖 / `proposed-mr.md`），run 結束**不刪**、於 final summary 回報路徑。
-- lane worktree + `claim_dir` 仍照清。
-- 此產出不被未來 run 讀回（idempotency 仍純靠 live 查 MR），不違反無狀態。
+- integrator 不 push/不開 MR；步驟照跑後產**一份**合併產物落 run_dir：`change.patch`（整 run 合併 diff）、`proposed-mr.md`（aggregate description，截圖引本地相對路徑、轉 ready 改標 `would-be-ready`）；各畫面 before/after 已在 `<run_dir>/<unified_id>/`。
+- run 目錄是交付物，run 結束**不刪**、於 final summary 回報路徑；lane worktree + `claim_dir` 仍照清。
+- 此產出不被未來 run 讀回（idempotency 仍純靠 audit 級 + live 查 MR），不違反無狀態。
 
 ## 6. internal loop 上限
 
@@ -239,6 +233,7 @@ fix 階段 push 後，mr 階段 rebase 到 `base_branch`（已 push 用 `--force
 
 ### 彙整去處
 
-- 每畫面 runner 回一筆 `{capture_s, audit_s, fix_s, verify_s, build_runs, dev_rounds}`（`verify_s` 涵蓋審查＋驗證）。
-- 供 Phase 3 final summary 呈現（compact 一行；`trace=true` 出完整逐階段 breakdown）。
+- 每畫面 runner 回一筆 `{capture_s, audit_s, fix_s, verify_s, build_runs, dev_rounds}`（`verify_s` 涵蓋審查＋驗證；fix/verify 不再含 push）。
+- integrator 另回一筆 `{integrate_s, cherrypick_n, conflict_n, build_runs}`（彙整 wall-clock + cherry-pick/衝突/build 次數）；orchestrator 以「spawn integrator → 收到完成通知」整段 wall-clock 交叉檢核。
+- 供 Phase 3 final summary 呈現（compact 一行 + 一行 integrate；`trace=true` 出完整逐階段 breakdown）。
 - 觀測資料只進 final summary（對話呈現），不寫 `.audit`。

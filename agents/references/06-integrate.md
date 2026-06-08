@@ -49,7 +49,10 @@ git -C <wt> cherry-pick <feature_branch_prefix><unified_id>   # per-screen branc
 
 > 為何窄：沒被 merge 碰到的畫面在 integration branch 上跟它**已通過 tier-1（per-screen 審查與驗證）的 per-screen branch 逐字相同**，重審零收益。Tier-2 只補「合併才出現」的風險：衝突解品質 + 跨畫面共用檔/元件的互相打架。
 
-1. **算 `affected_screens`** = `conflict_screens[]`（有 git 衝突解過的）∪「touched 檔與另一畫面重疊的畫面」（無衝突但動到同一共享檔/元件——個別 branch 看不出、合併才暴露）。其餘畫面不審。
+1. **算 `affected_screens`**（其餘畫面不審——與已過 tier-1 的 branch 逐字相同）：
+   - `conflict_screens[]`：cherry-pick 有 git 衝突解過的。
+   - **hunk/key 級重疊**的畫面：兩畫面改到同檔的同一區（同一 string key／同一函式／同一元件）。
+   - 純「同檔不同 key」不算（如多畫面各改 `strings.xml` 不同 key）——獨立 key 無互動，納入只是白測。
 2. **重跑 + 視覺比對**：在 `device_serial` 跑各 `affected_screens` 的 `snapshot_test_cmd`，比對新 after 圖 vs 該畫面 runner 交出的 after：
    - 視覺等價 → 通過。
    - 不等價 → 該畫面在合併後被改壞（典型：共享字串/元件被另一畫面動到）。
@@ -65,13 +68,15 @@ git -C <wt> cherry-pick <feature_branch_prefix><unified_id>   # per-screen branc
 
 - 把需重修的畫面組成 `needs_refix: [{ unified_id, branch, findings[] }]`（findings 一行一條：問題 + 期望，等同 AC）後 **return 給 orchestrator**（先不 push、不開 MR）。
 - orchestrator 對每個 `needs_refix` 畫面重派其 runner（帶 `refix={findings, round}`，在既有 branch 上重修、amend 單一 commit），再**重新 spawn integrator**（resume：重 cherry-pick 更新後的畫面、重跑 3→3.5）。
-- 有界：整合層重修輪數受 orchestrator 的 `integration_refix_max_rounds`（預設 2）；達上限仍未過 → **把該畫面踢出本 MR**（不 cherry-pick）、在 return `dropped: [unified_id → reason]` 標記，其餘畫面照常成 MR。被踢畫面下次 run 由 audit 自然重撿。
+- 有界：整合層重修輪數受 orchestrator 的 `integration_refix_max_rounds`（預設 2）；達上限仍未過 → **把該畫面踢出本 MR**、在 return `dropped: [unified_id → reason]` 標記，其餘畫面照常成 MR。被踢畫面下次 run 由 audit 自然重撿。
+- 決定 drop 後**必重建再開 MR**：從 cherry-pick 集移除 dropped → 重跑步驟 1–3（`checkout -B` 重建、只含留下的畫面、build 過）→ 才進步驟 4/5。不得 push 仍含 dropped 或未重 build 的樹。
 
 ### 4. 組單一 MR description（aggregate schema 見 [`issue-schemas`](issue-schemas.md) §4）
 - 總覽段：`涵蓋 N 畫面（X 全修 / Y 部分）` + run 資訊（platform / locale / run_id / string_fix_policy）。
 - 每畫面一段 `<details>`（收合、可逐畫面展開）：直接取該畫面 `mr-section.md` 內容，截圖引用換成上傳後的 `/uploads/...`。
 - 截圖上傳：對每張 before/after `POST /projects/:id/uploads`（multipart，`glab api -F` 不支援，用 `curl -F file=@<png>` + token）取 `/uploads/...` markdown。
 - 殘留可見彙總：把所有 `partially-fixed` 畫面的殘留可見缺陷彙整到總覽段最顯眼處（不只藏在各畫面收合段）。
+- dropped 揭露：有 `dropped` → 總覽段加一行「本 run 另有 K 畫面整合層未過、未納入本 MR，下次 run 重撿」（誠實鐵則，不靜默縮水）。
 
 ### 5. push + 開 MR + 轉 ready
 - `git -C <wt> push -u origin screen-mender-run-<run_id>`（已 push 用 `--force-with-lease`）。

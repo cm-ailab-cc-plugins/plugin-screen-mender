@@ -1,6 +1,6 @@
 # Stage 4 — 審查與驗證（self-review + self-verify）
 
-- 對應舊 reviewer + verifier 職責，**一格兩判**：
+- **一格兩判**：
   - 先審剛才這次修復的 **diff**（scope + redesign，便宜，先做）。
   - 再驗 after **截圖**（kept 每條 AC 真的達成、且畫面其餘部分沒被波及）。
 - 任一不過即回 fix。

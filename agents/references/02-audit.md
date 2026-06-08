@@ -1,6 +1,5 @@
 # Stage 2 — audit（偵測 + triage + AC）
 
-- 對應 SKILL Phase 3。
 - 對 capture 出的截圖找出所有看得見的視覺缺陷，triage，附 AC，寫 `issues.md`。
 - shot-audit 只產「問題 + 描述 + 調整建議」、不做 triage／AC（刻意精簡），故 triage + 附 AC 由本階段補上。
 
@@ -39,7 +38,7 @@
 - `kept_count`。
 
 ## Exit
-- `kept_count == 0`（全乾淨或全 triage 掉）→ status `clean`，不開 MR，結束本畫面。
+- `kept_count == 0`（全乾淨或全 triage 掉）→ status `clean`，不納入彙整，結束本畫面。
 - 有 kept → 進 stage 3。
 - 結構性、需設計決策但無設計來源證據 → 記 summary，不靜默吞：
   - `wont-fix:design-redesign-not-bug`（非 bug），或

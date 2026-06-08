@@ -399,6 +399,10 @@ screen-mender 全靠截圖偵測＋驗收，但截圖可能不忠於真機。
 ## ⚠️ 全 run 殘留可見缺陷彙總（<m> 條，分散在 <k> 個部分修復畫面）
 - <unified_id>｜[<category>] <title> — `deferred:<reason>` — <一句>
 
+<!-- 只在有 dropped 時 -->
+## 🚫 整合層未納入本 MR（<k> 畫面，下次 run 重撿）
+- <unified_id> — 整合層 review 重修達上限未過
+
 <!-- 每畫面一收合段，reviewer 可逐畫面展開；對應 MR 內一畫面一 commit -->
 <details><summary><unified_id> — <fully-fixed|partially-fixed (n,m)></summary>
 

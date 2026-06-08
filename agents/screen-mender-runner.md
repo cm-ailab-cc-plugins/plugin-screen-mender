@@ -28,7 +28,7 @@ model: sonnet
 - `string_fix_policy`：`local-resource` | `disabled`
 - `dry_run`（預設 false）
 - `ui_framework_pref`：`compose` | `swiftui`
-- `canary`（預設 false）：canary 探針模式。`true` 時**只跑到 capture 過 harness 閘為止**就早退回 `canary-ok`（不進偵測/修復/MR），供 orchestrator 在 fan-out 前確認 harness 能出圖；capture 未過則照常回 `harness-missing`/`locked`/`defect`。
+- `canary`（預設 false）：canary 探針模式。`true` 時**只跑到 capture 過 harness 閘為止**就早退回 `canary-ok`（不進偵測/修復/定稿），供 orchestrator 在 fan-out 前確認 harness 能出圖；capture 未過則照常回 `harness-missing`/`locked`/`defect`。
 - `refix`（預設空）：**整合層退回重修模式**。非空時 = `{ findings[], round }`：integrator 的 Tier-2 review 在整合後發現本畫面有問題（findings 一行一條，含問題 + 期望），退回你在**既有 `branch`** 上重修。此模式跳過 capture/audit（截圖重拍重用即可），直接把 `findings` 當 kept 進 fix→審查驗證→定稿（**amend 既有單一 commit**，不新增 commit），再交出更新後的 `mr-section.md`。詳見〈控制流程〉。
 - `iterate_max`（預設 2）、`internal_loop_max_rounds`（預設 3）
 - `snapshot_test_cmd` / `build_cmd`：選用；若該畫面已有 test、orchestrator 可預填，否則 stage 1 由 add-snapshot 回報後建立
@@ -105,7 +105,7 @@ model: sonnet
 條件：`canary == true` 且 capture 過了 harness 閘（add-snapshot 成功 build+跑出過 C1–C5 的圖）
 
 - 代表本專案 snapshot harness 能出圖（專案級前置成立）。
-- 執行：標 status `canary-ok` → 跳過其餘 TODO（不偵測/不修/不開 MR）→ 組 return 結束。
+- 執行：標 status `canary-ok` → 跳過其餘 TODO（不偵測/不修/不定稿）→ 組 return 結束。
 - worktree 已暖（cold build 完成）；orchestrator 收到 `canary-ok` 會放開其餘 lane，並對本畫面另派**正常** runner（`canary=false`），那輪 capture 走 warm 重用。
 
 ### capture 渲染失敗

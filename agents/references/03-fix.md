@@ -1,6 +1,5 @@
 # Stage 3 — fix（修復）
 
-- 對應現 developer 職責。
 - 把 `issues.md` 的 kept 條**全部修好、且只修這些**。
 - 怎麼修、改哪一行、用哪一級手段，由你在真 render 上迭代決定——UI 的真相在截圖裡，不在紙上。
 
@@ -82,7 +81,7 @@
 
 ## Output / Exit
 - `fix_record[]`：每條 `{title, tier(T1|T2), fix_choice, skipped_higher(為何跳過縮文案/長高), before→after 一句, AC 達成?, legibility_degraded(比例,若有)}`。
-- `render_reimplemented`（若改寫自訂繪製：改了什麼、原本怎麼畫）/ `string_changes`（字串 id 異動，若有）/ `commit_hash` / after 圖路徑 / `build_runs`（build+test 實際次數）。
+- `render_reimplemented`（若改寫自訂繪製：改了什麼、原本怎麼畫）/ `string_changes`（字串 id 異動，若有）/ after 圖路徑 / `build_runs`（build+test 實際次數）。
 - `deferred[]`：`{title, reason(needs-design|deferred-by-run-config), 為何本 run 不修}`。
   - config 限制要寫清「已知怎麼修、被哪條關掉」。
 - **STUCK**：跑滿 `iterate_max` 仍未達成、或 build 同錯連 3 次 → 記 STUCK（platform / 卡點 / 試過什麼 / 建議），交 driver 升級 escalation。
